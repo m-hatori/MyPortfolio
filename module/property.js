@@ -1,4 +1,3 @@
-//TODO: constDPVals をGASからfirestoreに保存する
 //const other_api = require("./other_api.js");
 
 //NEWアイコンURL
