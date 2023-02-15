@@ -1,13 +1,18 @@
 /* eslint-disable no-invalid-this */
 /* eslint-disable one-var */
-require("date-utils");
 const functions = require("firebase-functions")
+const firebaseServiceAccount = require("../linebot-for-buyer_firebase_ServiceAccount.json"); 
+
+//コレクション取得時 初期化
+//const admin = require("firebase-admin");
+//const initialized = new Promise(admin.initializeApp({credential: admin.credential.cert(firebaseServiceAccount)}));
+
+require("date-utils");
 
 const Products = require("./module//class ProductsList.js");
 const User = require("./module/class UsersList.js");
 const branch_postBack = require("./module/branch_postBack.js");
 //const branch_text = require("./module/branch_text.js");
-
 const FireStore_API = require("./module/npm API/FireStore_API.js");
 const HttpsRequest = require("./module/npm API/axios_API.js");
 
@@ -15,9 +20,10 @@ const message_JSON = require("./module/LINE_Messaging_API/message_JSON.js")
 
 //●テキストメッセージ処理分岐
 //TODO: postBackへ移行する
+
 async function branchOfTextMessage(TIMESTAMP_NEW, textMessage, user){  
   const message_JSON_irregular = require("./module/LINE_Messaging_API/Irregular.js");
-  const message_JSON_Cart = require("./module/LINE_Messaging_API/Cart.js")
+  const Cart = require("./module/LINE_Messaging_API/Cart.js")
 
   let messagesArray = []
   if(textMessage == "商品情報リスト表示"){
@@ -30,14 +36,14 @@ async function branchOfTextMessage(TIMESTAMP_NEW, textMessage, user){
     }
   }
   else if(textMessage == "買い物かご確認"){
-
     //買い物かご内情報確認
     if(user.property.CART.length <= 0){return message_JSON_irregular.whenZeroProductInCart()}
+
     //買い物かご更新
     //カルーセルメッセージ取得
     //STATE_NEWORDER 新規発注確認: true
     //STATE_CHECK_DELIVERYDAY 納品期間チェック: 2
-    messagesArray = await message_JSON_Cart.getProductsInCart(user, TIMESTAMP_NEW, true, 2)
+    messagesArray = await Cart.getCarouselMessage(user, TIMESTAMP_NEW, true, 2)
 
     const textMessage = "買い物かご情報を上に表示しました。\n" +
     "買い物かご追加直後の商品は、希望口数は1、希望市場納品日は最短納品可能日が指定されています。\n\n" +
@@ -58,11 +64,11 @@ async function branchOfTextMessage(TIMESTAMP_NEW, textMessage, user){
     if(FILES === null){return}
 
     //発注履歴 
-    const POST_BACK_DATA = JSON.stringify({
-      postBackTag: "menu",
+    const postBackData = {
+      tag: "menu",
       command: "checkOrderRecord"
-    })
-    columns.push(message_JSON.getMenubutton("発注履歴", POST_BACK_DATA))
+    }
+    columns.push(message_JSON.getMenubutton("発注履歴", postBackData))
     
     //マニュアル
     columns.push(message_JSON.getMenubuttonURL("マニュアル", FILES.manualForBuyer, FILES.manualForBuyer))
@@ -79,7 +85,7 @@ async function branchOfTextMessage(TIMESTAMP_NEW, textMessage, user){
 }
 
 //署名検証
-async function authSecretKey(SIGNATURE, BODY, CHANNELSECRET){
+function authSecretKey(SIGNATURE, BODY, CHANNELSECRET){
   const crypto = require('crypto');
   const SIGNATURE_DIGEST = crypto
     .createHmac("SHA256", CHANNELSECRET)
@@ -94,25 +100,21 @@ async function authSecretKey(SIGNATURE, BODY, CHANNELSECRET){
     return false
   }
 }
-
-module.exports.helloWorld =  functions.region("asia-northeast1").https.onRequest(async (request) => {
+module.exports.helloWorld =  functions.region("asia-northeast1").https.onRequest(async (request, response) => {
   try{
     console.time("measurement of time")
-    if (request.method == "POST"){
+    if (request.method === "POST"){
       //リクエスト 前処理
       const SECRET_REF = await FireStore_API.getDocFmDB("secret")
-      const SECRET = SECRET_REF[1]
 
       //httpsRequest インスタンス にアクセストークン格納
-      const httpsRequest = new HttpsRequest()
-      httpsRequest.ACCESSTOKEN = SECRET.ACCESSTOKEN
+      const httpsRequest = new HttpsRequest(SECRET_REF[1].ACCESSTOKEN)
 
       //署名確認
-      const CHANNELSECRET = SECRET.CHANNELSECRET      
-      const SIGNATURE = await authSecretKey(request.headers["x-line-signature"], request.body, CHANNELSECRET)
+      const SIGNATURE = authSecretKey(request.headers["x-line-signature"], request.body, SECRET_REF[1].CHANNELSECRET)
 
       if(SIGNATURE){
-        const HACKTEXT = /[&`$<>*?!(){};|]/g
+        const HACKTEXT = /[`$<>*?!(){};|]/g         
         const events = request.body.events
         console.log(`events count: ${events.length}`)
         
@@ -120,9 +122,9 @@ module.exports.helloWorld =  functions.region("asia-northeast1").https.onRequest
           //return events.map(async (event) => {
           //イベント情報の取得
           const eventType = event.type
-          functions.logger.log(`eventType:${eventType}`)
+          console.log(`eventType:${eventType}`)
           const TIMESTAMP_NEW = event.timestamp
-          functions.logger.log(`TIMESTAMP_NEW:${TIMESTAMP_NEW}`)
+          console.log(`TIMESTAMP_NEW:${TIMESTAMP_NEW}`)
           
           //ユーザー認証
           const user = new User()
@@ -130,72 +132,96 @@ module.exports.helloWorld =  functions.region("asia-northeast1").https.onRequest
           user.ID = user.ID.replace(HACKTEXT, "")//ハッキング警戒文字列を削除;
           user.httpsRequest = httpsRequest
           
-          return Promise.all([user.authUser(), user.getSSIDs()]).then(async () => {
-            let messagesArray = [];          
-            if(eventType == "message"){
-              //メッセージタイプ分岐
-              const messageType = event.message.type
-              functions.logger.log(`messageType:${messageType}`)
-              if(messageType == "text"){
-                  const textMessage = event.message.text.replace(HACKTEXT,"") //ハッキング警戒文字列を削除
-                  functions.logger.log(`textMessage:${textMessage}`)
+          let messagesArray = [];          
+          await Promise.all([user.authUser(), user.getSSIDs()])
 
-                  //文字数制限 ハッキング対策
-                  if(textMessage.length > 50){
-                    messagesArray.push(message_JSON.getTextMessage("恐れ入りますが、個別のメッセージには対応しておりません。\n当社までお電話いただくか窓口にてお問合わせくださいませ。"))
-                  }
-                  else{
-                    messagesArray = await branchOfTextMessage(TIMESTAMP_NEW, textMessage, user)
-                  }
-              }
-              else{
-                messagesArray.push(message_JSON.getTextMessage("恐れ入りますが、個別のメッセージには対応しておりません。\n当社までお電話いただくか窓口にてお問合わせくださいませ。"))
-              }
+          if(eventType == "message"){
+            //メッセージタイプ分岐
+            const messageType = event.message.type
+            console.log(`messageType:${messageType}`)
+            if(messageType == "text"){
+                const textMessage = event.message.text.replace(HACKTEXT,"") //ハッキング警戒文字列を削除
+                console.log(`textMessage:${textMessage}`)
+
+                //文字数制限 ハッキング対策
+                if(textMessage.length > 50){
+                  messagesArray.push(message_JSON.getTextMessage("恐れ入りますが、個別のメッセージには対応しておりません。\n当社までお電話いただくか窓口にてお問合わせくださいませ。"))
+                }
+                else{
+                  messagesArray = await branchOfTextMessage(TIMESTAMP_NEW, textMessage, user)
+                }
             }
-            else if(eventType == "postback"){
-              const postBackData = JSON.parse(event.postback.data.replace(/[&`$<>*?!();|]/g,"")); //ハッキング警戒文字列を削除
-              console.log(`postBackData: ${postBackData}`)
-              messagesArray = await branch_postBack.process(event, TIMESTAMP_NEW, postBackData, user)
-            }
-            else if(eventType == "follow"){messagesArray = await user.follow()}
-            else if(eventType == "unfollow"){return user.unfollow()}          
             else{
               messagesArray.push(message_JSON.getTextMessage("恐れ入りますが、個別のメッセージには対応しておりません。\n当社までお電話いただくか窓口にてお問合わせくださいませ。"))
             }
-            //返信
-            //TODO: タイムアウトするまで継続してしまう。。。
-            return httpsRequest.replyMessageByAxios(event, messagesArray)
-          })
-        }))   
+          }
+          else if(eventType == "postback"){
+            const postBackData = JSON.parse(event.postback.data.replace(/[`$<>*?!();|]/g,"")); //ハッキング警戒文字列を削除
+            messagesArray = await branch_postBack.process(event, TIMESTAMP_NEW, postBackData, user)
+          }
+          else if(eventType == "follow"){messagesArray = await user.follow()}
+          else if(eventType == "unfollow"){return user.unfollow()}          
+          else{
+            messagesArray.push(message_JSON.getTextMessage("恐れ入りますが、個別のメッセージには対応しておりません。\n当社までお電話いただくか窓口にてお問合わせくださいませ。"))
+          }            
+          
+          //返信
+          //TODO: タイムアウトするまで継続してしまう。。。
+          return httpsRequest.replyMessageByAxios(event, messagesArray)
+        }))        
       }
       else{
         console.error(`signature Error`);
         return null
       }
     }
+    return
   }
   catch(e){
-    functions.logger.error(e)
-    return e
+    console.error(e)
+    return
   }
   finally{
+    response.end()
     console.timeEnd("measurement of time")
   }
 });
-
 /*
 (async function(){
 }())
 */
 
-
 /*
 //TEST ALL
-(async function(){
+initialized.then(()=>{testonRequest})
+const testonRequest = async () => {
   //test用
-  console.time('measurement of time')
+  
+  const db = admin.firestore();
+  const docCol = db.collection("LINEBot");  
+  const docRef = await docCol.doc()
+  
+  
+  //TODO: スキップ 必ず元のデータを確認させる？ → 現状不要。今後商品情報、発注情報をfirestoreに実装する場合は必要。
+  const getOptions = {
+    source: 'cache'
+  };
+  
+  //docRef.get(getOptions).then((doc) => {
+  const SECRET = await docRef.get().then((doc) => {    
+    if (doc.exists) {
+      const docData = doc.data()
+      return [docRef, docData]
+    }else {
+      throw new Error("No such document!")
+    }
+    }).catch((error) => {
+      console.log(error);
+    }); 
+  console.log(SECRET)
+  //console.time('measurement of time')
   //TEST用 定数
-  const TIMESTAMP = new Date(2023, 0, 25, 15, 55, 29).getTime()
+  const TIMESTAMP = new Date().getTime()
     
   //TAG
   //const TAG_REF = "instantOrder"
@@ -208,9 +234,10 @@ module.exports.helloWorld =  functions.region("asia-northeast1").https.onRequest
   //const NUM_REF = "reOrderConfirm"
 
   //複数発注発注
-  const COMMAND_REF = "check"  
-  //const COMMAND_REF = "add"  
-  //const COMMAND_REF = "orderConfirm"
+  //const COMMAND_REF = "check"  
+  //const COMMAND_REF = "add"
+  //const COMMAND_REF = "selectOrderNum"
+  const COMMAND_REF = "orderConfirm"
   //const COMMAND_REF = "reOrderConfirm"
   const POSTBACKDATA = {
     timeStamp: TIMESTAMP,
@@ -218,14 +245,14 @@ module.exports.helloWorld =  functions.region("asia-northeast1").https.onRequest
     command: COMMAND_REF,
     newOrderNum: 2,
     product: {
-      sheetId: 525976409,
-      productId: 3,
-      producer: "12169-1 (株)中村農園",
-      name: "テスト1",
-      norm: "1寸Pot 6入｜単価 ¥1,100",
-      orderState: 0,
+      deliveryday: "2023-02-27",
+      name: "テスト4",
+      norm: "4寸Pot 6入｜単価 ¥1,100",
       orderNum: 1,
-      deliveryday: "2023-03-01",
+      orderState: 0,
+      producer: "12169-1 (株)中村農園",
+      productId: 6,
+      sheetId: 525976409,
     }
   }
   
@@ -248,17 +275,16 @@ module.exports.helloWorld =  functions.region("asia-northeast1").https.onRequest
     }
   }
 
+
   //リクエスト 前処理
   const SECRET_REF = await FireStore_API.getDocFmDB("secret")
-  const SECRET = SECRET_REF[1]
 
   //署名確認 省略
   //const CHANNELSECRET = SECRET.CHANNELSECRET      
   //const SIGNATURE = await authSecretKey(request.headers["x-line-signature"], request.body, CHANNELSECRET)
   
   //httpsRequest インスタンス にアクセストークン格納
-  const httpsRequest = new HttpsRequest()
-  httpsRequest.ACCESSTOKEN = SECRET.ACCESSTOKEN
+  const httpsRequest = new HttpsRequest(SECRET_REF[1].ACCESSTOKEN)
 
   //if(SIGNATURE){
     const HACKTEXT = /[&`$<>*?!(){};|]/g
@@ -266,57 +292,53 @@ module.exports.helloWorld =  functions.region("asia-northeast1").https.onRequest
     //return Promise.all(events.map(async (event) => {
       //イベント情報の取得
       const eventType = event.type
-      functions.logger.log(`eventType:${eventType}`)
+      console.log(`eventType:${eventType}`)
       const TIMESTAMP_NEW = event.timestamp
-      functions.logger.log(`TIMESTAMP_NEW:${TIMESTAMP_NEW}`)
+      console.log(`TIMESTAMP_NEW:${TIMESTAMP_NEW}`)
       
       //ユーザー認証
       const user = new User()
       user.ID = event.source.userId
       user.ID = user.ID.replace(HACKTEXT, "")//ハッキング警戒文字列を削除;
       user.httpsRequest = httpsRequest
-      
-      return Promise.all([user.authUser(), user.getSSIDs()]).then(async () => {
-          let messagesArray = [];          
-          if(eventType == "message"){
-            //メッセージタイプ分岐
-            const messageType = event.message.type
-            functions.logger.log(`messageType:${messageType}`)
-            if(messageType == "text"){
-                const textMessage = event.message.text.replace(HACKTEXT,"") //ハッキング警戒文字列を削除
-                functions.logger.log(`textMessage:${textMessage}`)
 
-                //文字数制限 ハッキング対策
-                if(textMessage.length > 50){
-                  messagesArray.push(message_JSON.getTextMessage("恐れ入りますが、個別のメッセージには対応しておりません。\n当社までお電話いただくか窓口にてお問合わせくださいませ。"))
-                }
-                else{
-                  messagesArray = await branchOfTextMessage(TIMESTAMP_NEW, textMessage, user)
-                }
-            }
-            else{
+      await Promise.all([user.authUser(), user.getSSIDs()])
+      
+      let messagesArray = [];          
+      if(eventType == "message"){
+        //メッセージタイプ分岐
+        const messageType = event.message.type
+        console.log(`messageType:${messageType}`)
+        if(messageType == "text"){
+            const textMessage = event.message.text.replace(HACKTEXT,"") //ハッキング警戒文字列を削除
+            console.log(`textMessage:${textMessage}`)
+
+            //文字数制限 ハッキング対策
+            if(textMessage.length > 50){
               messagesArray.push(message_JSON.getTextMessage("恐れ入りますが、個別のメッセージには対応しておりません。\n当社までお電話いただくか窓口にてお問合わせくださいませ。"))
             }
-          }
-          else if(eventType == "postback"){
-            const postBackData = JSON.parse(event.postback.data.replace(/[&`$<>*?!();|]/g,"")); //ハッキング警戒文字列を削除
-            messagesArray = await branch_postBack.process(event, TIMESTAMP_NEW, postBackData, user)
-          }
-          else if(eventType == "follow"){messagesArray = await user.follow()}
-          else if(eventType == "unfollow"){return user.unfollow()}          
-          else{
-            messagesArray.push(message_JSON.getTextMessage("恐れ入りますが、個別のメッセージには対応しておりません。\n当社までお電話いただくか窓口にてお問合わせくださいませ。"))
-          }
+            else{
+              messagesArray = await branchOfTextMessage(TIMESTAMP_NEW, textMessage, user)
+            }
+        }
+        else{
+          messagesArray.push(message_JSON.getTextMessage("恐れ入りますが、個別のメッセージには対応しておりません。\n当社までお電話いただくか窓口にてお問合わせくださいませ。"))
+        }
+      }
+      else if(eventType == "postback"){
+        const postBackData = JSON.parse(event.postback.data.replace(/[&`$<>*?!();|]/g,"")); //ハッキング警戒文字列を削除
+        messagesArray = await branch_postBack.process(event, TIMESTAMP_NEW, postBackData, user)
+      }
+      else if(eventType == "follow"){messagesArray = await user.follow()}
+      else if(eventType == "unfollow"){return user.unfollow()}          
+      else{
+        messagesArray.push(message_JSON.getTextMessage("恐れ入りますが、個別のメッセージには対応しておりません。\n当社までお電話いただくか窓口にてお問合わせくださいませ。"))
+      }
         
-        //返信
-        //return httpsRequest.replyMessageByAxios(event, messagesArray)
-        return httpsRequest.pushMessageByAxios(user.ID, messagesArray)        
-      })
-    //}))
-  //}
-  //else{
-    //console.error(`signature Error`);
-    //return null
-  //}
-}())
+      //返信
+      //return httpsRequest.replyMessageByAxios(event, messagesArray)
+      httpsRequest.pushMessageByAxios(user.ID, messagesArray)        
+      //})
+
+}
 */

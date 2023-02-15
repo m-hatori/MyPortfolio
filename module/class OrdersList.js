@@ -451,7 +451,7 @@ class OrderRecords{
     //console.log(ordersArray)
     const STARTINDEX = this.sRow + 1 //挿入始端行 0(1行目), 1(2行目), 2(3行目)....
     const ENDINDEX = ordersArray.length + STARTINDEX  //挿入終端行 挿入始端行＋挿入行数
-    console.log(`STARTINDEX : ${STARTINDEX}   ENDINDEX : ${ENDINDEX}`)
+    console.log(`-発注リストへ登録 挿入始端行 : ${STARTINDEX}   挿入終端行 : ${ENDINDEX}`)
     
     //let inputRange = this.sheet.getRange(this.sRow, this.columns.orderday, numRows, this.orderColNum)
 

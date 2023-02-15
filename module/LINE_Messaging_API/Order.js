@@ -118,7 +118,6 @@ function chechkTextDeliveryday(deliveryday_FMT_LINE){
   output:['yy/mm/dd(day), checkState]
 */
 function certificationDeliveryday(date){
-  console.log(``)
   const BEFORE_UNIXTTIME = date.getTime()
   
   //荷受け日を競り日に
@@ -161,7 +160,7 @@ function certificationDeliveryday(date){
   else{
     CHANGE_STATE = false, CHANGE_STATE_TEXT = "変更なし"
   }
-  console.log(`納品日 荷受け日、ブロック日チェック後: ${AFTER_DATE}, ${CHANGE_STATE_TEXT}`)
+  console.log(`--納品日 荷受け日、ブロック日チェック後: ${AFTER_DATE}, ${CHANGE_STATE_TEXT}`)
   return [AFTER_DATE, CHANGE_STATE]
 }
 
@@ -169,8 +168,6 @@ function certificationDeliveryday(date){
 //from yyyy-mm-dd, yyyy-mm-dd, yyyy-mm-dd
 //to text, changeState:true: , false: 
 function certificationdeliveryPeriod(deliveryday, SD_FMT_LINE, ED_FMT_LINE){
-  console.log(``)
-  console.log(`納品日 納品期間チェック`)
   let text, changeState = false
   
   //納品期間確認
@@ -196,16 +193,16 @@ function certificationdeliveryPeriod(deliveryday, SD_FMT_LINE, ED_FMT_LINE){
 
   //判定
   if(unixD < unixsD  || unixeD < unixD){
-    console.log(`-納品期間 外`)
+    console.log(`--納品期間 外`)
     //納品日書き換え
-      text = "納品期間外のため、再指定してください。"
+      text = "--納品期間外のため、再指定してください。"
       changeState = true
-      console.log("--納品開始日:" + sDDate + "  unix:" + unixsD)
-      console.log("--希望納品日:" + deliveryDate + "  unix:" + unixD)
-      console.log("--納品終了日:" + eDDate + "  unix:" + unixeD)
+      console.log("---納品開始日:" + sDDate + "  unix:" + unixsD)
+      console.log("---希望納品日:" + deliveryDate + "  unix:" + unixD)
+      console.log("---納品終了日:" + eDDate + "  unix:" + unixeD)
   }
   else{
-    console.log(`-納品期間 内`)
+    console.log(`--納品期間 内`)
     //FMT変更
     text = deliveryday
   }

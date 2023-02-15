@@ -1,21 +1,23 @@
 /* eslint-disable one-var */
-//認証情報 fireStore、スプレッドシート、Driveへアクセスする際に必要。
-//const ServiceAccount = require("../../linebot-for-buyer-3c96daa62b24.json"); 
+//const {admin} = require("./Firebase.js");
 const firebaseServiceAccount = require("../../../linebot-for-buyer_firebase_ServiceAccount.json"); 
 
 //コレクション取得時 初期化
 const admin = require("firebase-admin");
 admin.initializeApp({credential: admin.credential.cert(firebaseServiceAccount)});
-const db = admin.firestore();
-const docCol = db.collection("LINEBot");
 
 //読み込み
-async function getDocFmDB(docName){
+module.exports.getDocFmDB = async (admin, docName) => {
+  const db = admin.firestore();
+  const docCol = db.collection("LINEBot");
   const docRef = await docCol.doc(docName)
   
+  /*
+  //TODO: スキップ 必ず元のデータを確認させる？ → 現状不要。今後商品情報、発注情報をfirestoreに実装する場合は必要。
   const getOptions = {
     source: 'cache'
   };
+  */
 
   //docRef.get(getOptions).then((doc) => {
   return docRef.get().then((doc) => {    
@@ -29,7 +31,8 @@ async function getDocFmDB(docName){
       console.log(error);
     }); 
 }
-
-module.exports = {
-  getDocFmDB
-}
+/*
+(async function(){
+  console.log(await module.exports.getDocFmDB("secret"))
+}())
+*/

@@ -159,7 +159,7 @@ class Products{
   }
 
   //1商品リスト 取得
-  async getAllproductInfo(ORERBUTTON_STATE, OPTION_UPSTATE, TIMESTAMP) {
+  async getAllproductInfo(ORERBUTTON_STATE, OPTION_UPSTATE, TIMESTAMP_NEW) {
     //シート取得
     if(this.plSheetVals == null){
       await this.getAllSheetData()
@@ -181,7 +181,7 @@ class Products{
           
           //掲載 trueのみ
           if(masterProductArray[property.constPL.columns.upState] === "TRUE"){
-            card = getProductsCarouselForBuyer(masterProductArray, this.getPostData(masterProductArray), TIMESTAMP)
+            card = getProductsCarouselForBuyer(masterProductArray, this.getPostData(masterProductArray), TIMESTAMP_NEW)
             
             //columnsに情報を格納する
             pNum++
@@ -206,7 +206,7 @@ class Products{
               masterProductArray[property.constPL.columns.sellingPrice] != ""
             ){
             
-            card = getProductsCarouselForBuyer(masterProductArray, this.getPostData(masterProductArray), TIMESTAMP)
+            card = getProductsCarouselForBuyer(masterProductArray, this.getPostData(masterProductArray), TIMESTAMP_NEW)
           
             //columnsに情報を格納する
             pNum++
@@ -299,15 +299,15 @@ class Products{
   getPostData(masterProductArray){
     return {
       product: {
-        sheetId: this.sheetId,
-        productId: masterProductArray[property.constPL.columns.productId],
+        sheetId: Number(this.sheetId),
+        productId: Number(masterProductArray[property.constPL.columns.productId]),
         producer: masterProductArray[property.constPL.columns.numA] + "-" + masterProductArray[property.constPL.columns.numB] + " " +  masterProductArray[property.constPL.columns.producerName],
         name: masterProductArray[property.constPL.columns.name] ,
         norm: masterProductArray[property.constPL.columns.norm],
         orderState: 0, // 発注情報 未確認: 0,  発注情報 未確認(2回目以降はテキストメッセージ不要):2, 発注情報 確認済み: 1
         orderNum: 1,
         deliveryday: timeMethod.getDateFMSpreadSheetToLINE(masterProductArray[property.constPL.columns.sDeliveryday], "LINE")//Deliveryday def:納品開始日 
-      }
+      },
     }
   }
 
@@ -378,49 +378,41 @@ const getAllListCard = function(title, detail, postBackData) {
 }
 
 //●商品リスト カルーセルメッセージ(Flex Messge)
-const getProductsCarouselForBuyer = function(masterProductArray, postBackData, TIMESTAMP){
-  //PostData
+const getProductsCarouselForBuyer = function(masterProductArray, postBackData, TIMESTAMP_NEW){
+  //body
+    let bodyContents  = [], imageContents = [], footerContents = []
+    imageContents = flexMessage_ForBuyer.getCardbodyNewIcon(imageContents, masterProductArray[property.constPL.columns.judgeNew])   //newicon これがなければ
+  
+  //現在庫数字でない 発注ボタンを非表示 現在庫 テキスト表示
+  const stockNow = Number(masterProductArray[property.constPL.columns.stockNow]) 
+  //現在庫数字 残口あり 発注ボタンを表示
+  if(stockNow > 0) {
+    imageContents = flexMessage_ForBuyer.getCardbodyStockNow(imageContents, "残" + stockNow + "口")  //残口
+    bodyContents.push(flexMessage_ForBuyer.getCardbodyProductInfo1(flexMessage_ForBuyer.getCardPicURL(masterProductArray[property.constPL.columns.picUrl]), imageContents))//商品情報１  画像、NEWアイコン、残口追加
+  
+    const TEXT_AFTER_PUSH_BOTTUN = `${postBackData.product.name} | ${postBackData.product.norm}`
     const postBackDataBuy = {
-      timeStamp: TIMESTAMP,
+      timeStamp: TIMESTAMP_NEW,
       tag: "instantOrder",
       command: "check",  
       product: postBackData.product,
     }
-
     const postBackDataAddCart = {
-      timeStamp: TIMESTAMP,
+      timeStamp: TIMESTAMP_NEW,
       tag: "cart",
       command: "add",  
       product: postBackData.product,
     }
-  
-  //body
-    let bodyContents  = [], imageContents = [], footerContents = []
-    imageContents = flexMessage_ForBuyer.getCardbodyNewIcon(imageContents, masterProductArray[property.constPL.columns.judgeNew])   //newicon
-  
-  //現在庫数字でない 発注ボタンを非表示 現在庫 テキスト表示
-    if(isNaN(masterProductArray[property.constPL.columns.stockNow])){
-      imageContents = flexMessage_ForBuyer.getCardbodyStockNow(imageContents, masterProductArray[property.constPL.columns.stockNow])  //残口
-      bodyContents.push(flexMessage_ForBuyer.getCardbodyProductInfo1(flexMessage_ForBuyer.getCardPicURL(masterProductArray[property.constPL.columns.picUrl]), imageContents))//商品情報１  画像、NEWアイコン、残口追加
-    }
-
-  //現在庫数字 残口あり 発注ボタンを表示
-    else if(Number(masterProductArray[property.constPL.columns.stockNow]) > 0) {
-      imageContents = flexMessage_ForBuyer.getCardbodyStockNow(imageContents, "残" + masterProductArray[property.constPL.columns.stockNow] + "口")  //残口
-      bodyContents.push(flexMessage_ForBuyer.getCardbodyProductInfo1(flexMessage_ForBuyer.getCardPicURL(masterProductArray[property.constPL.columns.picUrl]), imageContents))//商品情報１  画像、NEWアイコン、残口追加
-
-      const TEXT_AFTER_PUSH_BOTTUN = `${masterProductArray[property.constPL.columns.name]} | ${masterProductArray[property.constPL.columns.norm]}`
-      footerContents.push(flexMessage_ForBuyer.getCardfooterBottun("発注",  `${TEXT_AFTER_PUSH_BOTTUN}を発注`, postBackDataBuy))
-      footerContents.push(flexMessage_ForBuyer.getCardfooterBottunWithText("カートへ", postBackDataAddCart, `${TEXT_AFTER_PUSH_BOTTUN}をカートへ`))
-    }
+    footerContents.push(flexMessage_ForBuyer.getCardfooterBottun("発注",  `${TEXT_AFTER_PUSH_BOTTUN}を発注`, postBackDataBuy))
+    footerContents.push(flexMessage_ForBuyer.getCardfooterBottunWithText("カートへ", postBackDataAddCart, `${TEXT_AFTER_PUSH_BOTTUN}をカートへ`))
+  }
 
   //現在庫数字 残口なし 発注ボタンを非表示
-    else{
-      imageContents = flexMessage_ForBuyer.getCardbodyStockNow(imageContents, "完売")  //残口
-      //bodyContents.push(flexMessage_ForBuyer.getCardbodyProductInfo1(flexMessage_ForBuyer.getCardPicURL("https://drive.google.com/uc?id=1O0Y4sc-vMYE7-5LPF0tbywHG7Owt0TKO"), imageContents))//商品情報１  完売画像、NEWアイコン
-      bodyContents.push(flexMessage_ForBuyer.getCardbodyProductInfo1(flexMessage_ForBuyer.getCardPicURL(masterProductArray[property.constPL.columns.picUrl]), imageContents))//商品情報１  画像、NEWアイコン、残口追加
-    }
-    bodyContents.push(flexMessage_ForBuyer.getCardbodyProductInfo2(masterProductArray))//商品情報2   商品名～市場納品期間
+  else{
+    imageContents = flexMessage_ForBuyer.getCardbodyStockNow(imageContents, "完売")  //残口
+    bodyContents.push(flexMessage_ForBuyer.getCardbodyProductInfo1(flexMessage_ForBuyer.getCardPicURL(masterProductArray[property.constPL.columns.picUrl]), imageContents))//商品情報１  画像、NEWアイコン、残口追加
+  }
+  bodyContents.push(flexMessage_ForBuyer.getCardbodyProductInfo2(postBackData, masterProductArray[property.constPL.columns.deliveryPeriod]))//商品情報2   商品名～市場納品期間
 
   return  flexMessage_ForBuyer.getProductCardForBuyer(bodyContents, footerContents)
 }

@@ -31,7 +31,8 @@ function requestRetry(res, epUrl, propUser, message, to, retryKey){
 }
 */
 class HttpsRequest{
-    constructor(){
+    constructor(ACCESSTOKEN){
+      this.ACCESSTOKEN = ACCESSTOKEN
       //LINEサーバー エンドポイントURL 一般後記されているのでセキュリティ保護の必要なし
       this.epUrls = {
         "reply"     :"https://api.line.me/v2/bot/message/reply",
@@ -42,32 +43,33 @@ class HttpsRequest{
         "profile"   :"https://api.line.me/v2/bot/profile/",
         "ids"       :"https://api.line.me/v2/bot/followers/ids"
       }
-  
-      this.ACCESSTOKEN
     }
     console_Success(STATE, response){
-        console.log(`${STATE}  res state: ${response.statusText} ${response.status}`);
-        //console.log(response.headers);
-        //console.log(response.data);
-        //console.log(response.config);
+      console.log(`${STATE}  res state: ${response.statusText} ${response.status}`);
+      //console.log(response.headers);
+      //console.log(response.data);
+      //console.log(response.config);
+      response.status.end()
+      return
     }
 
     console_Error(STATE, error){
-        if(error.response){
-          console.log(`${STATE}  res state: ${error.statusText} ${error.status}`);
-            console.error(`res header: ${error.response.headers}`);
-            console.error(`res data: ${error.response.data}`);              
-        }
-        else if (error.request) {
-          // The request was made but no response was received
-          // `error.request` is an instance of XMLHttpRequest in the browser and an instance of
-          // http.ClientRequest in node.js
-          console.error(error.request);
-        } 
-        else{
-          console.error(error.message);
-        }
-        console.error(error.config);    
+      if(error.response){
+        console.log(`${STATE}  res state: ${error.statusText} ${error.status}`);
+        console.error(`res header: ${error.response.headers}`);
+        console.error(`res data: ${error.response.data}`);              
+      }
+      else if (error.request) {
+        // The request was made but no response was received
+        // `error.request` is an instance of XMLHttpRequest in the browser and an instance of
+        // http.ClientRequest in node.js
+        console.error(error.request);
+      } 
+      else{
+        console.error(error.message);
+      }
+      console.error(error.config);
+      return
     }    
    
     //POST Request
@@ -79,12 +81,10 @@ class HttpsRequest{
       //https Post Request
       return await axios.post(URL, data)
         .then((response) => {
-            this.console_Success(STATE, response)
-            return response
+          return this.console_Success(STATE, response)
         })
         .catch((error) => {
-            this.console_Error(STATE, error)
-            return error
+          return this.console_Error(STATE, error)
         });
     }
   
@@ -96,12 +96,10 @@ class HttpsRequest{
       //https Post Request
       return await axios.get(URL)
         .then((response) => {
-            this.console_Success(STATE, response)
-            return response
+          return this.console_Success(STATE, response)
         })
         .catch((error) => {
-            this.console_Error(STATE, error)
-            return error
+          return this.console_Error(STATE, error)
         });
     }
   
@@ -113,26 +111,24 @@ class HttpsRequest{
       //https Post Request
       return await axios.delete(URL)
         .then((response) => {
-            this.console_Success(STATE, response)
-            return response
+          return this.console_Success(STATE, response)
         })
         .catch((error) => {
-            this.console_Error(STATE, error)
-            return error
+          return this.console_Error(STATE, error)
         });
     }
   
     //Reply
     async replyMessageByAxios(event, messagesArray){
-        const DATA = JSON.stringify({
-          replyToken: event.replyToken,
-          messages: messagesArray
-        });  
-        
-        //header info
-        const URL = this.epUrls.reply;
-        
-        return await this.httpsRequestByAxios("返信", URL, DATA)
+      const DATA = JSON.stringify({
+        replyToken: event.replyToken,
+        messages: messagesArray
+      });  
+      
+      //header info
+      const URL = this.epUrls.reply;
+      
+      return await this.httpsRequestByAxios("返信", URL, DATA)
     }
       
     //Push
