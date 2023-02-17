@@ -1,11 +1,7 @@
+/* eslint-disable no-undef */
 /* eslint-disable no-invalid-this */
 /* eslint-disable one-var */
-const functions = require("firebase-functions")
-const firebaseServiceAccount = require("../linebot-for-buyer_firebase_ServiceAccount.json"); 
-
-//コレクション取得時 初期化
-//const admin = require("firebase-admin");
-//const initialized = new Promise(admin.initializeApp({credential: admin.credential.cert(firebaseServiceAccount)}));
+const functions = require('firebase-functions');
 
 require("date-utils");
 
@@ -100,18 +96,20 @@ function authSecretKey(SIGNATURE, BODY, CHANNELSECRET){
     return false
   }
 }
+
 module.exports.helloWorld =  functions.region("asia-northeast1").https.onRequest(async (request, response) => {
   try{
-    console.time("measurement of time")
     if (request.method === "POST"){
       //リクエスト 前処理
       const SECRET_REF = await FireStore_API.getDocFmDB("secret")
 
       //httpsRequest インスタンス にアクセストークン格納
       const httpsRequest = new HttpsRequest(SECRET_REF[1].ACCESSTOKEN)
+      //const httpsRequest = new HttpsRequest(ACCESSTOKEN.value())
 
       //署名確認
       const SIGNATURE = authSecretKey(request.headers["x-line-signature"], request.body, SECRET_REF[1].CHANNELSECRET)
+      //const SIGNATURE = authSecretKey(request.headers["x-line-signature"], request.body, CHANNELSECRET.value())
 
       if(SIGNATURE){
         const HACKTEXT = /[`$<>*?!(){};|]/g         
@@ -166,7 +164,6 @@ module.exports.helloWorld =  functions.region("asia-northeast1").https.onRequest
           }            
           
           //返信
-          //TODO: タイムアウトするまで継続してしまう。。。
           return httpsRequest.replyMessageByAxios(event, messagesArray)
         }))        
       }
@@ -174,8 +171,11 @@ module.exports.helloWorld =  functions.region("asia-northeast1").https.onRequest
         console.error(`signature Error`);
         return null
       }
+      
     }
-    return
+    else{
+      return
+    }
   }
   catch(e){
     console.error(e)
@@ -183,162 +183,5 @@ module.exports.helloWorld =  functions.region("asia-northeast1").https.onRequest
   }
   finally{
     response.end()
-    console.timeEnd("measurement of time")
   }
 });
-/*
-(async function(){
-}())
-*/
-
-/*
-//TEST ALL
-initialized.then(()=>{testonRequest})
-const testonRequest = async () => {
-  //test用
-  
-  const db = admin.firestore();
-  const docCol = db.collection("LINEBot");  
-  const docRef = await docCol.doc()
-  
-  
-  //TODO: スキップ 必ず元のデータを確認させる？ → 現状不要。今後商品情報、発注情報をfirestoreに実装する場合は必要。
-  const getOptions = {
-    source: 'cache'
-  };
-  
-  //docRef.get(getOptions).then((doc) => {
-  const SECRET = await docRef.get().then((doc) => {    
-    if (doc.exists) {
-      const docData = doc.data()
-      return [docRef, docData]
-    }else {
-      throw new Error("No such document!")
-    }
-    }).catch((error) => {
-      console.log(error);
-    }); 
-  console.log(SECRET)
-  //console.time('measurement of time')
-  //TEST用 定数
-  const TIMESTAMP = new Date().getTime()
-    
-  //TAG
-  //const TAG_REF = "instantOrder"
-  const TAG_REF = "cart"
-
-  //COMMAND
-  //単品発注  
-  //const NUM_REF = "setDeliveryday"
-  //const NUM_REF = "orderConfirm"
-  //const NUM_REF = "reOrderConfirm"
-
-  //複数発注発注
-  //const COMMAND_REF = "check"  
-  //const COMMAND_REF = "add"
-  //const COMMAND_REF = "selectOrderNum"
-  const COMMAND_REF = "orderConfirm"
-  //const COMMAND_REF = "reOrderConfirm"
-  const POSTBACKDATA = {
-    timeStamp: TIMESTAMP,
-    tag: TAG_REF,
-    command: COMMAND_REF,
-    newOrderNum: 2,
-    product: {
-      deliveryday: "2023-02-27",
-      name: "テスト4",
-      norm: "4寸Pot 6入｜単価 ¥1,100",
-      orderNum: 1,
-      orderState: 0,
-      producer: "12169-1 (株)中村農園",
-      productId: 6,
-      sheetId: 525976409,
-    }
-  }
-  
-  //console.log(postBackData)
-  const event ={
-    type:"postback",//message, postback, follow, unfollow
-    timestamp:TIMESTAMP,
-    source:{
-      userId: "U88989922274b32d7630d8f0070515d3c"//ipad
-    },
-    postback: {
-      data: JSON.stringify(POSTBACKDATA),
-      params: {
-        date: "2023-03-03"
-      }
-    },
-    message:{
-      type: "text",
-      text:"商品情報リスト表示" //商品商品情報リスト表示, 
-    }
-  }
-
-
-  //リクエスト 前処理
-  const SECRET_REF = await FireStore_API.getDocFmDB("secret")
-
-  //署名確認 省略
-  //const CHANNELSECRET = SECRET.CHANNELSECRET      
-  //const SIGNATURE = await authSecretKey(request.headers["x-line-signature"], request.body, CHANNELSECRET)
-  
-  //httpsRequest インスタンス にアクセストークン格納
-  const httpsRequest = new HttpsRequest(SECRET_REF[1].ACCESSTOKEN)
-
-  //if(SIGNATURE){
-    const HACKTEXT = /[&`$<>*?!(){};|]/g
-    //const events = request.body.events
-    //return Promise.all(events.map(async (event) => {
-      //イベント情報の取得
-      const eventType = event.type
-      console.log(`eventType:${eventType}`)
-      const TIMESTAMP_NEW = event.timestamp
-      console.log(`TIMESTAMP_NEW:${TIMESTAMP_NEW}`)
-      
-      //ユーザー認証
-      const user = new User()
-      user.ID = event.source.userId
-      user.ID = user.ID.replace(HACKTEXT, "")//ハッキング警戒文字列を削除;
-      user.httpsRequest = httpsRequest
-
-      await Promise.all([user.authUser(), user.getSSIDs()])
-      
-      let messagesArray = [];          
-      if(eventType == "message"){
-        //メッセージタイプ分岐
-        const messageType = event.message.type
-        console.log(`messageType:${messageType}`)
-        if(messageType == "text"){
-            const textMessage = event.message.text.replace(HACKTEXT,"") //ハッキング警戒文字列を削除
-            console.log(`textMessage:${textMessage}`)
-
-            //文字数制限 ハッキング対策
-            if(textMessage.length > 50){
-              messagesArray.push(message_JSON.getTextMessage("恐れ入りますが、個別のメッセージには対応しておりません。\n当社までお電話いただくか窓口にてお問合わせくださいませ。"))
-            }
-            else{
-              messagesArray = await branchOfTextMessage(TIMESTAMP_NEW, textMessage, user)
-            }
-        }
-        else{
-          messagesArray.push(message_JSON.getTextMessage("恐れ入りますが、個別のメッセージには対応しておりません。\n当社までお電話いただくか窓口にてお問合わせくださいませ。"))
-        }
-      }
-      else if(eventType == "postback"){
-        const postBackData = JSON.parse(event.postback.data.replace(/[&`$<>*?!();|]/g,"")); //ハッキング警戒文字列を削除
-        messagesArray = await branch_postBack.process(event, TIMESTAMP_NEW, postBackData, user)
-      }
-      else if(eventType == "follow"){messagesArray = await user.follow()}
-      else if(eventType == "unfollow"){return user.unfollow()}          
-      else{
-        messagesArray.push(message_JSON.getTextMessage("恐れ入りますが、個別のメッセージには対応しておりません。\n当社までお電話いただくか窓口にてお問合わせくださいませ。"))
-      }
-        
-      //返信
-      //return httpsRequest.replyMessageByAxios(event, messagesArray)
-      httpsRequest.pushMessageByAxios(user.ID, messagesArray)        
-      //})
-
-}
-*/
