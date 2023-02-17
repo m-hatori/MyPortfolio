@@ -2,12 +2,14 @@
 const property = require("../property.js");
 const timeMethod = require("../getTime.js");
 const Products = require("../class ProductsList.js");
+const OrderRecords = require("../class OrdersList.js");
 
 const message_JSON = require("./message_JSON.js");
 const Irregular = require("./Irregular.js");
 const flexMessage_ForBuyer = require("./Flex Message Parts For Buyer.js");
 const Order = require("./Order.js");
 
+const StampMessage = require("./Class Stamp.js");
 
 //●単品 発注内容確認
 //口数チェック 不要
@@ -102,12 +104,12 @@ module.exports.getCarouselMessage = async function(user, postBackData, STATE_CHE
     }    
     let postBackData_selectOrderNum = postBackData_base
     postBackData_selectOrderNum.command = "selectOrderNum"
-    console.log(`postBackData_selectOrderNum: ${JSON.stringify(postBackData_selectOrderNum)}`)
+    //console.log(`postBackData_selectOrderNum: ${JSON.stringify(postBackData_selectOrderNum)}`)
     footerContents.push(flexMessage_ForBuyer.getCardfooterBottun("口数", "口数変更", postBackData_selectOrderNum))
 
     let postBackData_setDeliveryday = postBackData_base
     postBackData_setDeliveryday.command = "setDeliveryday"
-    console.log(`postBackData_setDeliveryday: ${JSON.stringify(postBackData_setDeliveryday)}`)
+    //console.log(`postBackData_setDeliveryday: ${JSON.stringify(postBackData_setDeliveryday)}`)
     const SD_FMT_LINE = timeMethod.getDeliverydayYMD(masterProductArray[property.constPL.columns.sDeliveryday], 0)//納品開始日
     const ED_FMT_LINE = timeMethod.getDeliverydayYMD(masterProductArray[property.constPL.columns.eDeliveryday], 1)//納品終了日
     footerContents.push(flexMessage_ForBuyer.getCardfooterDeliverydayBottun("納品日", postBackData_setDeliveryday, SD_FMT_LINE, ED_FMT_LINE))
@@ -159,38 +161,40 @@ module.exports.getCarouselMessage = async function(user, postBackData, STATE_CHE
 }
 
 //●発注確定 単品発注
-module.exports.orderConfirm = async function(user, TIMESTAMP, postBackData, orderRecords){
+module.exports.orderConfirm = async function(user, TIMESTAMP, postBackData){
   console.log("")
-  //●メッセージ作成・送信
   let messagesArray= []
 
   //●前処理
-  //前処理 固有 商品リストと照合するための情報準備
-  //posaBackData 抽出
-  const sheetId = postBackData.product.sheetId
-  const pId = postBackData.product.productId
-  const orderNum = postBackData.product.orderNum
-  const deliveryday = postBackData.product.deliveryday
+  const orderRecords = new OrderRecords(user)
+  await orderRecords.getUserOrderData()
 
-  //posaBackDataからスプレッドシートの情報を取得
-  const plSheet= new Products(user.SSIDS.spSheetId1, sheetId)
+  //2重発注確認
+  const DOUBLE_ORDER_STATE = await orderRecords.checkOrderRecordTimeStamp(TIMESTAMP, postBackData.product.name) 
+  if(DOUBLE_ORDER_STATE){
+    console.error(`--エラー ダブルオーダー`)
+    messagesArray.unshift(message_JSON.getTextMessage("当発注手続きは完了済みです。\nメインメニューから手続きをやり直してください。"))
+    return messagesArray
+  }
+  
+  //posaBackDataから商品リストの情報を取得
+  const plSheet= new Products(user.SSIDS.spSheetId1, postBackData.product.sheetId)
   plSheet.SSIDS = user.SSIDS
-  const masterProductArray = await plSheet.getRowData(pId)
+  const masterProductArray = await plSheet.getRowData(postBackData.product.productId)
   if(masterProductArray == undefined){
-    console.log(`商品マスタ情報に問題があります。`)
-    console.log(`シートID : ${sheetId} 商品ID : ${pId}  商品マスタ情報：${masterProductArray}`)
+    console.log(`--商品マスタ情報に問題があります。`)
+    console.log(`---シートID : ${postBackData.product.sheetId} 商品ID : ${postBackData.product.productId}  商品マスタ情報：${masterProductArray}`)
     messagesArray = Irregular.whenOldProductInfo()
     return messagesArray
   }
   
-  //掲載中 単品発注できる時点で掲載中なので不要  
-  //商品情報確認
+      
+  //発注不可
+  //条件: 商品情報が異なる。または在庫<0
+  //掲載中確認 単品発注できる時点で掲載中なので不要  
+  //納品日確認 不要
   const STOCKNOW = masterProductArray[property.constPL.columns.stockNow]
-  const STATE_PRODUCTINFO = Order.certificationProductInfo(postBackData, masterProductArray)
-
-  //発注不可条件
-  //在庫<0、または商品情報が異なる
-  if(STATE_PRODUCTINFO){
+  if(Order.certificationProductInfo(postBackData, masterProductArray)){
     messagesArray = Irregular.whenOldProductInfo()
     return messagesArray
   }
@@ -198,43 +202,41 @@ module.exports.orderConfirm = async function(user, TIMESTAMP, postBackData, orde
     messagesArray = Irregular.whenStockNone()
     return messagesArray
   }
-
-  //納品日確認 不要
-  //新規発注データ準備            
-  //新規発注情報配列（スプレッドシート格納用）
-  const orderDataArray = orderRecords.getOrderArray(TIMESTAMP, sheetId, masterProductArray, orderNum, deliveryday)
   
-  //再発注伺い 条件
-  //新規発注、かつ発注履歴有、かつ各発注履歴について、発注しようとしている情報との重複がある → 再発注
-  if(postBackData.product.orderState != 1 && orderRecords.recordNum > 0 && orderRecords.certificateOrderRecord(masterProductArray, deliveryday, false)){
-    console.log(`再発注伺い`)
+  //●発注情報 仕分け
+  //再発注伺い
+  //条件: 発注情報 未確認、かつ発注履歴有、かつ各発注履歴について、発注しようとしている情報との重複がある
+  if(postBackData.product.orderState != 1 && orderRecords.recordNum > 0 && orderRecords.certificateOrderRecord(masterProductArray, postBackData.product.deliveryday, false)){
+    console.log(`--再発注伺い`)
     const AFTER_ORDER_STATE = 1
     postBackData.product.orderState = AFTER_ORDER_STATE
-    console.log(`postBackData: ${postBackData}`)
     messagesArray = await module.exports.getCarouselMessage(user, postBackData, 0)    
   }
-  
-  //発注履歴なし
-  //発注履歴あり、かつ各発注履歴について、発注しようとしている情報との重複がない
-  //再発注伺い済み
-  else{
-    console.log(`新規発注情報 登録`)
-    //発注完了メッセージ
-    const TEXT_ORDERINFO = "●" + postBackData.product.name + postBackData.product.norm +
-      "\n希望口数:" + orderNum + "\n希望納品日:" + timeMethod.getDisplayFmtDate(deliveryday)
-    const STATE_ORDERHIS = [1, [TEXT_ORDERINFO]]
-    const STATE_REORDER = false //再発注:true, 再発注でない:false
 
-    //在庫管理
-    new Promise(()=>{
-      plSheet.setNewStock(pId, STOCKNOW, orderNum)
-    }).then(()=>{
-      plSheet.sheet.saveUpdatedCells(); // save all updates in one call
-    }) 
-    
+  //新規発注情報を発注リストに登録
+  //条件: 発注履歴なし、または発注履歴あり、かつ各発注履歴について、発注しようとしている情報との重複がない。または再発注伺い済み
+  else{
+    console.log(`--新規発注情報を発注リストに登録`)
+
     //発注履歴挿入
-    orderRecords.insertOrderRecord([orderDataArray])
-    messagesArray = Order.replyOrderConfirmTextMessage(STATE_ORDERHIS, STATE_REORDER, user, TIMESTAMP);   
+    orderRecords.insertOrderRecord([orderRecords.getOrderArray(TIMESTAMP, postBackData.product.sheetId, masterProductArray, postBackData.product.orderNum, postBackData.product.deliveryday)])
+
+    //発注完了メッセージ
+    const textMessage = "以下1件の発注が完了しました。\n\n"
+    
+    "●" + postBackData.product.name + "\n" +
+    postBackData.product.norm + "\n" +
+    "希望口数: " + postBackData.product.orderNum + "\n" +
+    "希望納品日: " + timeMethod.getDisplayFmtDate(postBackData.product.deliveryday) + "\n\n" +
+    
+    "またのご利用をお待ちしております。"
+
+    messagesArray.push(message_JSON.getTextMessage(textMessage));
+    messagesArray.push(new StampMessage().ありがとう);    
+    
+    //在庫管理
+    await plSheet.setNewStock(postBackData.product.productId, STOCKNOW, postBackData.product.orderNum)
+    plSheet.sheet.saveUpdatedCells(); // save all updates in one call
   }
   return messagesArray
 }

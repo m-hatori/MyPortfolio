@@ -1,7 +1,3 @@
-//12/20 一通り 手直しした
-//発注情報を SpreadSheetに書き込むメソッド「insertOrderRecord」を修正する
-//getUserOrderData() marketID
-
 /* eslint-disable one-var */
 const property = require("./property.js");
 const timeMethod = require("./getTime.js");
@@ -154,7 +150,7 @@ class OrderRecords{
     this.allUserOrderData = userOrderArray;
     this.recordNum = this.allUserOrderData.length
     //console.log(this.allUserOrderData)
-    console.log(`発注履歴件数 : ${this.recordNum}`)    
+    console.log(`--発注履歴件数 : ${this.recordNum}`)    
   }
 
   //タイムスタンプと商品名が同一の発注履歴があるか確認
@@ -162,22 +158,24 @@ class OrderRecords{
   async checkOrderRecordTimeStamp(TIMESTAMP, NEW_PRODUCT_NAME){
     //console.log(TIMESTAMP)
     TIMESTAMP = Math.floor(TIMESTAMP/1000) //unixTime(sec)
-    console.log(`新規発注日時: ${TIMESTAMP}, 新規発注商品名: ${NEW_PRODUCT_NAME}`)
+    //console.log(`新規発注日時: ${TIMESTAMP}, 新規発注商品名: ${NEW_PRODUCT_NAME}`)
 
     let unixTimeOrderday
-    for(let buff of this.allUserOrderData){
-      const ORDERED_PRODUCT_NAME = buff._rawData[this.columns.prductName]
-      const ORDERED_DAY = buff._rawData[this.columns.orderday]
-      unixTimeOrderday = await this.getDateFMOrderDay(ORDERED_DAY).getTime()/1000 //unixTime(sec)
-      console.log(`過去発注日時: ${ORDERED_DAY}`)
-      console.log(`過去発注日時: ${unixTimeOrderday}, 過去発注商品名: ${ORDERED_PRODUCT_NAME}`)
+    await (async () => {
+      for(let buff of this.allUserOrderData){
+        const ORDERED_PRODUCT_NAME = buff._rawData[this.columns.prductName]
+        const ORDERED_DAY = buff._rawData[this.columns.orderday]
+        unixTimeOrderday = await this.getDateFMOrderDay(ORDERED_DAY).getTime()/1000 //unixTime(sec)
+        //console.log(`過去発注日時: ${ORDERED_DAY}`)
+        //console.log(`過去発注日時: ${unixTimeOrderday}, 過去発注商品名: ${ORDERED_PRODUCT_NAME}`)
 
-      //発注日時と商品名が重複するか確認
-      if(unixTimeOrderday == TIMESTAMP && ORDERED_PRODUCT_NAME == NEW_PRODUCT_NAME){
-        console.log("発注済み確認: 済")
-        return true
+        //発注日時と商品名が重複するか確認
+        if(unixTimeOrderday == TIMESTAMP && ORDERED_PRODUCT_NAME == NEW_PRODUCT_NAME){
+          console.log("発注済み確認: 済")
+          return true
+        }
       }
-    }
+    })
     console.log("発注済み確認: 未")
     return false;
   }
@@ -209,9 +207,7 @@ class OrderRecords{
       messagesArray.push(new StampMessage().何卒)
     }
     else{
-      if(this.recordNum > maxRecord){
-        this.recordNum = maxRecord
-      }
+      if(this.recordNum > maxRecord){this.recordNum = maxRecord}
 
       //発注履歴カルーセル作成
       let pNum
@@ -232,27 +228,26 @@ class OrderRecords{
       }
 
       //メッセージ格納
+      //メッセージ1
       messagesArray.push(message_JSON.getflexCarouselMessage("発注履歴part1",columns1))
       
-      if(pNum > 10){
-        messagesArray.push(message_JSON.getflexCarouselMessage("発注履歴part2",columns2))
-      }
+      //メッセージ2
+      if(pNum > 10){messagesArray.push(message_JSON.getflexCarouselMessage("発注履歴part2",columns2))}
 
-      if(pNum > 20){
-        messagesArray.push(message_JSON.getflexCarouselMessage("発注履歴part3",columns3))
-      }
+      //メッセージ3
+      if(pNum > 20){messagesArray.push(message_JSON.getflexCarouselMessage("発注履歴part3",columns3))}
       
+      //メッセージ4
       messagesArray.push(message_JSON.getTextMessage("買参人番号" + this.MARKET_ID + "-" + this.BRANCH_NUM + "様\n過去30日の発注履歴を上に表示しました。"))
-
     }
     return messagesArray
   }
 
   //FlexMessage カルーセルカード 発注履歴 取得
   getOrderRecordCard(array){
-    const orderDate = "発注日時:" + array[this.columns.orderday].split(" ")[0]
+    const orderDate = "発注日:" + array[this.columns.orderday].split(" ")[0]
     const norm = array[this.columns.size] + array[this.columns.sizeUnit] + array[this.columns.quantityPerCase] +
-      "入  @" +  + array[this.columns.sellingPrice] + "円"
+      "入 ｜単価" + array[this.columns.sellingPrice] + "円"
     const producerInfo = array[this.columns.pnumA] + "-" + array[this.columns.pnumB] + " " + array[this.columns.producerName]
     const stateOrderNum    = "希望口数：" + array[this.columns.orderNum]
     const stateDeliveryday = "希望市場納品日：" + array[this.columns.deliveryday] //'yy/mm/dd(day)
@@ -425,7 +420,7 @@ class OrderRecords{
     return [
       ORDER_TIME, deliveryday, this.MARKET_ID, this.BRANCH_NUM, this.user.property.BUYER_NAME,
       "",//JANコード 予定
-      this.sheetNumber[sheetId] + "-" + masterProductArray[property.constPL.columns.productId],
+      `${this.sheetNumber[sheetId]}-${masterProductArray[property.constPL.columns.productId]}`,
       masterProductArray[property.constPL.columns.salesStaffName],
       masterProductArray[property.constPL.columns.numA],
       masterProductArray[property.constPL.columns.numB],

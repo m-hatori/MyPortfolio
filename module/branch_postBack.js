@@ -79,8 +79,7 @@ module.exports.process = async (event, TIMESTAMP_NEW, postBackData, user) => {
   const TAG = postBackData.tag
   const COMMAND = postBackData.command
   const TIMESTAMP = Number(postBackData.timeStamp)
-  console.log(`tag : ${TAG}, command : ${COMMAND}`)
-  console.log(" ")
+  console.log(`tag : ${TAG}, command : ${COMMAND}\n`)
 
   //メニュー処理
   if(TAG == "menu"){
@@ -180,18 +179,16 @@ module.exports.process = async (event, TIMESTAMP_NEW, postBackData, user) => {
       //新規発注確定
       else if(COMMAND == "orderConfirm"){
         console.log(`${CONSOLE_STATE}: 新規発注確定`)
-        const orderRecords = new OrderRecords(user)
-        await orderRecords.getUserOrderData()
         const reOrderConfirm_STATE = false
-        return messagesArray = await Cart.orderConfirm(user, TIMESTAMP, orderRecords, reOrderConfirm_STATE)
+        messagesArray = await Cart.orderConfirm(user, TIMESTAMP, reOrderConfirm_STATE)
+        return messagesArray
       }
       //再発注確定
       else if(COMMAND == "reOrderConfirm"){
         console.log(`${CONSOLE_STATE}: 再発注確定`)
-        const orderRecords = new OrderRecords(user)
-        await orderRecords.getUserOrderData()
         const reOrderConfirm_STATE = true
-        return messagesArray = await Cart.orderConfirm(user, TIMESTAMP, orderRecords, reOrderConfirm_STATE)
+        messagesArray = await Cart.orderConfirm(user, TIMESTAMP, reOrderConfirm_STATE)
+        return messagesArray
       }
 
     
@@ -281,7 +278,7 @@ module.exports.process = async (event, TIMESTAMP_NEW, postBackData, user) => {
         
         //買い物かご更新
         user.update_CartInfo()//DB更新
-      } 
+      }
     }
     
     //単品発注処理
@@ -324,27 +321,15 @@ module.exports.process = async (event, TIMESTAMP_NEW, postBackData, user) => {
         messagesArray = await OneOrder.getCarouselMessage(user, postBackData, 1)
         messagesArray.unshift(message_JSON.getTextMessage("納品日を変更しました。"))
       }
-      //4, 5 発注確定 or 再発注確定
-      else if(COMMAND == "orderConfirm" || COMMAND == "reOrderConfirm"){
-        const orderRecords = new OrderRecords(user)
-        await orderRecords.getUserOrderData()
-
-        //2重発注確認
-        const DOUBLE_ORDER_STATE = await orderRecords.checkOrderRecordTimeStamp(TIMESTAMP, postBackData.product.name) 
-        if(DOUBLE_ORDER_STATE){
-          console.error(`${CONSOLE_STATE}: エラー ダブルオーダー`)
-          messagesArray.unshift(message_JSON.getTextMessage("当発注手続きは完了済みです。\nメインメニューから手続きをやり直してください。"))
-          return messagesArray
-        }
-
-        if(postBackData.product.orderState == 1){
-          console.log(`${CONSOLE_STATE}:再発注確定`)
-          messagesArray = OneOrder.orderConfirm(user, TIMESTAMP, postBackData, orderRecords)
-        }
-        else{
-          console.log(`${CONSOLE_STATE}: 発注確定`)
-          messagesArray = OneOrder.orderConfirm(user, TIMESTAMP, postBackData, orderRecords)
-        }        
+      //4 発注確定
+      else if(COMMAND == "orderConfirm"){
+        console.log(`${CONSOLE_STATE}: 発注確定`)
+        messagesArray = OneOrder.orderConfirm(user, TIMESTAMP, postBackData)
+      }
+      //5 再発注確定
+      else if(COMMAND == "reOrderConfirm"){
+        console.log(`${CONSOLE_STATE}:再発注確定`)
+        messagesArray = OneOrder.orderConfirm(user, TIMESTAMP, postBackData)
       }
       else{
         console.log(`${CONSOLE_STATE}: 該当イベントなし`)

@@ -49,7 +49,6 @@ class HttpsRequest{
       //console.log(response.headers);
       //console.log(response.data);
       //console.log(response.config);
-      response.status.end()
       return
     }
 

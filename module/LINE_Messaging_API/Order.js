@@ -7,9 +7,8 @@ const timeMethod = require("../getTime.js");
 const Products = require("../class ProductsList.js");
 
 const action_JSON = require("./Action_JSON.js");
-const message_JSON = require("./message_JSON.js");
 const Irregular = require("./Irregular.js");
-const StampMessage = require("./Class Stamp.js");
+
 
 //●希望口数伺い
 async function selectOrderNum(spSheetId1, postBackData) {
@@ -74,7 +73,7 @@ function certificationProductInfo(postBackData, masterProductArray){
   //console.log(`--upState : ${masterProductArray[property.constPL.columns.upState]}`)
   
   //商品情報がリストと一致しないとき、または未掲載のとき
-  if(mData != pData || masterProductArray[property.constPL.columns.upState] === false){
+  if(mData != pData || masterProductArray[property.constPL.columns.upState] === "FALSE"){
     //console.log(`--商品リストとpostBackDataを照合 不一致,または未掲載`)
     return true
   }
@@ -209,32 +208,10 @@ function certificationdeliveryPeriod(deliveryday, SD_FMT_LINE, ED_FMT_LINE){
   return [text, changeState]
 }
 
-//●発注確定後メッセージ
-function replyOrderConfirmTextMessage(STATE_ORDERHIS){
-  let messagesArray = [], buff;
-  
-  //発注あり
-  if(STATE_ORDERHIS[0] > 0){
-    let textMessage = "以下" + STATE_ORDERHIS[0] + "件の発注が完了しました。\n\n" 
-      //+ "※「発注確定」後のキャンセル・変更については、直接市場へお問い合わせくださいませ。"
-    
-    for (buff of STATE_ORDERHIS[1]){
-      textMessage += buff + "\n\n"
-    }
-
-    textMessage += "またのご利用をお待ちしております。"
-
-    messagesArray.push(message_JSON.getTextMessage(textMessage));
-    messagesArray.push(new StampMessage().ありがとう);
-  }
-  return messagesArray
-}
-
 module.exports = {
   selectOrderNum,
   certificationProductInfo,
   chechkTextDeliveryday,
   certificationDeliveryday,
   certificationdeliveryPeriod,
-  replyOrderConfirmTextMessage
 }

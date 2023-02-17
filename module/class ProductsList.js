@@ -45,6 +45,7 @@ class Products{
     this.range_allList = "A3:G20"
     this.range_productList = "A3:X22"
     this.range_stockNow = "O3:O22"
+    this.range_stockNow_loaded = true
     this.sheetId
     this.sheet
     this.plSheetVals = null
@@ -67,7 +68,7 @@ class Products{
       await this.getSheet()
     }    
     this.sheet = await this.document.sheetsById[this.sheetId]
-    console.log(`シート名: ${this.sheet.title}`);
+    //console.log(`シート名: ${this.sheet.title}`);
     await this.sheet.loadHeaderRow(property.constPL.headersRow);
 
     //全範囲取得
@@ -315,18 +316,19 @@ class Products{
   async setNewStock(pId, stockNow, orderNum){
     //更新行
     const ROW = this.sRow + Number(pId) - 1
-    //console.log(`ROW : ${ROW}`)
+    console.log(`ROW : ${ROW}`)
     
     //最新 現在庫
     const NEWSTOCK = Number(stockNow) - Number(orderNum);
+    console.log(`NEWSTOCK: ${NEWSTOCK}`)
 
     //現在庫セル範囲 ロード
-    //TODO: スキップ 返り値でロード済みか判定
-    await this.sheet.loadCells(this.range_stockNow) // loads range of cells into local cache - DOES NOT RETURN THE CELLS
-    const CELL_STOCKNOW = this.sheet.getCell(ROW, property.constPL.columns.stockNow)
-
-    //情報更新
-    CELL_STOCKNOW.value = NEWSTOCK
+    if(this.range_stockNow_loaded){
+      await this.sheet.loadCells(this.range_stockNow)
+      this.range_stockNow_loaded = false
+    }
+    const CELL_STOCKNOW = this.sheet.getCell(ROW, property.constPL.columns.stockNow)   
+    CELL_STOCKNOW.value = NEWSTOCK//情報更新
   }
 }
 module.exports = Products;
@@ -378,19 +380,21 @@ const getAllListCard = function(title, detail, postBackData) {
 }
 
 //●商品リスト カルーセルメッセージ(Flex Messge)
-const getProductsCarouselForBuyer = function(masterProductArray, postBackData, TIMESTAMP_NEW){
-  //body
-    let bodyContents  = [], imageContents = [], footerContents = []
-    imageContents = flexMessage_ForBuyer.getCardbodyNewIcon(imageContents, masterProductArray[property.constPL.columns.judgeNew])   //newicon これがなければ
+const getProductsCarouselForBuyer = (masterProductArray, postBackData, TIMESTAMP_NEW) => {
+  let bodyContents  = [], imageContents = [], footerContents = []
+
+  //newItem表示
+  imageContents = flexMessage_ForBuyer.getCardbodyNewIcon(imageContents, masterProductArray[property.constPL.columns.judgeNew])
   
   //現在庫数字でない 発注ボタンを非表示 現在庫 テキスト表示
   const stockNow = Number(masterProductArray[property.constPL.columns.stockNow]) 
-  //現在庫数字 残口あり 発注ボタンを表示
+  //現II庫数字 残口あり 発注ボタンを表示
   if(stockNow > 0) {
+    //body
     imageContents = flexMessage_ForBuyer.getCardbodyStockNow(imageContents, "残" + stockNow + "口")  //残口
-    bodyContents.push(flexMessage_ForBuyer.getCardbodyProductInfo1(flexMessage_ForBuyer.getCardPicURL(masterProductArray[property.constPL.columns.picUrl]), imageContents))//商品情報１  画像、NEWアイコン、残口追加
-  
-    const TEXT_AFTER_PUSH_BOTTUN = `${postBackData.product.name} | ${postBackData.product.norm}`
+    
+    //footer
+    const TEXT_AFTER_PUSH_BOTTUN = `${postBackData.product.name}｜${postBackData.product.norm}`
     const postBackDataBuy = {
       timeStamp: TIMESTAMP_NEW,
       tag: "instantOrder",
@@ -409,9 +413,11 @@ const getProductsCarouselForBuyer = function(masterProductArray, postBackData, T
 
   //現在庫数字 残口なし 発注ボタンを非表示
   else{
+    //body
     imageContents = flexMessage_ForBuyer.getCardbodyStockNow(imageContents, "完売")  //残口
-    bodyContents.push(flexMessage_ForBuyer.getCardbodyProductInfo1(flexMessage_ForBuyer.getCardPicURL(masterProductArray[property.constPL.columns.picUrl]), imageContents))//商品情報１  画像、NEWアイコン、残口追加
   }
+  //body 共通
+  bodyContents.push(flexMessage_ForBuyer.getCardbodyProductInfo1(flexMessage_ForBuyer.getCardPicURL(masterProductArray[property.constPL.columns.picUrl]), imageContents))//商品情報１  画像、NEWアイコン、残口追加
   bodyContents.push(flexMessage_ForBuyer.getCardbodyProductInfo2(postBackData, masterProductArray[property.constPL.columns.deliveryPeriod]))//商品情報2   商品名～市場納品期間
 
   return  flexMessage_ForBuyer.getProductCardForBuyer(bodyContents, footerContents)
