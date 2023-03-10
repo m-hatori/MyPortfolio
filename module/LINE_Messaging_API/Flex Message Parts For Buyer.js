@@ -173,7 +173,8 @@ module.exports.getProductCardForBuyer  = function(bodyContents, footerContents){
   }
 */
 
-//●商品カード 単品/複数注文  発注確定/追加発注確定 キャンセルボタン
+//●商品カード 単品注文  発注確定/追加発注確定 キャンセルボタン
+//●商品カード 複数注文  発注確定/追加発注確定 買い物かごリセットボタン
 module.exports.getCardOrderCertification = function(explainText, label1, postodata1, label2, postdata2){
   let footerContents =  [
     {
@@ -285,7 +286,86 @@ module.exports.getCardOrderCertification = function(explainText, label1, postoda
         "separator": true
       }
     }    
-  }  
+  }
+}
+
+//●商品カード 単品/複数注文  キャンセルボタン
+//●商品カード 単品/複数注文  買い物かごリセットボタン
+module.exports.getCardOnlyNegativeBottun = function(explainText, label1, postodata1){
+  let footerContents =  [
+    {
+      "type": "box",
+      "layout": "vertical",
+      "contents": [
+        {
+          "type": "button",
+          "action": action_JSON.getPostbackActionWithText(" ", postodata1, label1),
+          "height": "md",
+          "position": "relative",
+          "style": "primary",
+          "color": "#905c44"
+        },
+        {
+          "type": "box",
+          "layout": "vertical",
+          "contents": [
+            {
+              "type": "text",
+              "text": label1,
+              "align": "center",
+              "size": "md",
+              "action": action_JSON.getPostbackActionWithText(label1, postodata1, label1),
+              "color": "#ffffff"
+            }
+          ],
+          "position": "absolute",
+          "justifyContent": "center",
+          "alignItems": "center",
+          "width": "100%",
+          "height": "100%"
+        }
+      ],
+      "cornerRadius": "xxl",
+      "justifyContent": "center",
+    }
+  ];
+         
+  return {
+    "type": "bubble",
+    "size": "kilo",    
+    "body": {
+      "type": "box",
+      "layout": "vertical",
+      "contents": [
+        {
+        "type": "text",
+        "text": explainText,
+        "wrap": true,
+        "size": "md"
+        }
+      ],
+      "spacing": "md",
+      "paddingAll": "xxl",
+      "justifyContent": "center",
+      "alignItems": "center"
+    },
+    "footer": {
+      "type": "box",
+      "layout": "horizontal",
+      "contents": footerContents,
+      "spacing": "sm",
+      "paddingAll": "md",
+      "justifyContent": "space-evenly",
+    },
+    "styles": {
+      "body": {
+        "backgroundColor": "#fddea5"
+      },
+      "footer": {
+        "separator": true
+      }
+    }    
+  }
 }
 
 

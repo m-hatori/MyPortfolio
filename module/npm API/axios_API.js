@@ -31,8 +31,8 @@ function requestRetry(res, epUrl, propUser, message, to, retryKey){
 }
 */
 class HttpsRequest{
-    constructor(ACCESSTOKEN){
-      this.ACCESSTOKEN = ACCESSTOKEN
+    constructor(){
+      this.ACCESSTOKEN = ""
       //LINEサーバー エンドポイントURL 一般後記されているのでセキュリティ保護の必要なし
       this.epUrls = {
         "reply"     :"https://api.line.me/v2/bot/message/reply",
@@ -44,6 +44,7 @@ class HttpsRequest{
         "ids"       :"https://api.line.me/v2/bot/followers/ids"
       }
     }
+
     console_Success(STATE, response){
       console.log(`${STATE}  res state: ${response.statusText} ${response.status}`);
       //console.log(response.headers);
@@ -124,10 +125,7 @@ class HttpsRequest{
         messages: messagesArray
       });  
       
-      //header info
-      const URL = this.epUrls.reply;
-      
-      return await this.httpsRequestByAxios("返信", URL, DATA)
+      return await this.httpsRequestByAxios("返信", this.epUrls.reply, DATA)
     }
       
     //Push
@@ -138,29 +136,26 @@ class HttpsRequest{
           "messages": messagesArray
       });
   
-      //header info
-      const URL = this.epUrls.push;
-  
-      return await this.httpsRequestByAxios("プッシュ", URL, DATA)
+      return await this.httpsRequestByAxios("プッシュ", this.epUrls.push, DATA)
     }
   
     //RichMenu
     //ユーザーリッチメニュー設定
     setRichMenu(userId, richMenuId) {
-      const URL = "https://api.line.me/v2/bot/user/" + userId + "/richmenu/" + richMenuId
+      const URL = `https://api.line.me/v2/bot/user/${userId}/richmenu/${richMenuId}`
       return this.httpsRequestByAxios("リッチメニュー更新", URL)
     }
   
     //ユーザーリッチメニュー解除
     resetRichMenu(userId) {
-      const URL = "https://api.line.me/v2/bot/user/" + userId + "/richmenu"
+      const URL = `https://api.line.me/v2/bot/user/${userId}/richmenu`
       return this.httpsDELETERequestByAxios("リッチメニュー初期化", URL)
     }
   
     //●LINEプロフィールプロフィール取得
-    getUserProfile(userId){ 
-      let url = this.epUrls.profile + userId;
-      return this.httpsGETRequestByAxios("LINEプロフィールプロフィール取得", url)
+    async getUserProfile(userId){ 
+      const URL = `${this.epUrls.profile}${userId}`
+      return await this.httpsGETRequestByAxios("LINEプロフィールプロフィール取得", URL)
     }
   
     //LINE名取得
@@ -175,6 +170,6 @@ class HttpsRequest{
       const URL = "https://api.line.me/v2/bot/user/" + userId + "/richmenu";
       return await httpsGETRequestByAxios(URL)
     }
-    */  
+    */
 }
 module.exports = HttpsRequest

@@ -12,9 +12,10 @@ const Order = require("./Order.js");
 const StampMessage = require("./Class Stamp.js");
 
 //●単品 発注内容確認
+//STETE_NEWORDER: true: 商品情報をplSheet, masterProductArrayから取得、false: 商品情報をDBから取得
 //口数チェック 不要
 //納品日チェック STATE_CHECK_DELIVERYDAY  テキスト、納品期間チェック不要:0, 荷受け日、ブロック日チェック: 1
-module.exports.getCarouselMessage = async function(user, postBackData, STATE_CHECK_DELIVERYDAY = 0){  
+module.exports.getCarouselMessage = async function(user, postBackData, STETE_NEWORDER, STATE_CHECK_DELIVERYDAY = 0, plSheet, masterProductArray){
   //商品リスト情報
   let picUrl
 
@@ -24,13 +25,15 @@ module.exports.getCarouselMessage = async function(user, postBackData, STATE_CHE
   let textOrderNum = "", textDeliveryday = ""
   let bodyContents  = [], imageContents = [], footerContents = []
 
-  //同一商品IDの商品情報を抽出
-  const plSheet= new Products(user.SSIDS.spSheetId1, postBackData.product.sheetId) 
-  const masterProductArray = await plSheet.getRowData(postBackData.product.productId)
-  //console.log(`masterProductArray : ${masterProductArray}`)
-  if(masterProductArray == undefined){
-    console.log(`商品マスタ情報に問題があります。`)
-    console.log(`シートID : ${postBackData.product.sheetId} 商品ID : ${postBackData.product.productId}`)          
+  if(STETE_NEWORDER){
+    //同一商品IDの商品情報を抽出
+    plSheet = new Products(user.SECRETS.spSheetId1, postBackData.product.sheetId) 
+    masterProductArray = await plSheet.getRowData(postBackData.product.productId)
+    //console.log(`masterProductArray : ${masterProductArray}`)
+    if(masterProductArray == undefined){
+      console.log(`商品マスタ情報に問題があります。`)
+      console.log(`シートID : ${postBackData.product.sheetId} 商品ID : ${postBackData.product.productId}`)          
+    }
   }
 
   //商品情報確認
@@ -178,8 +181,7 @@ module.exports.orderConfirm = async function(user, TIMESTAMP, postBackData){
   }
   
   //posaBackDataから商品リストの情報を取得
-  const plSheet= new Products(user.SSIDS.spSheetId1, postBackData.product.sheetId)
-  plSheet.SSIDS = user.SSIDS
+  const plSheet= new Products(user.SECRETS.spSheetId1, postBackData.product.sheetId)
   const masterProductArray = await plSheet.getRowData(postBackData.product.productId)
   if(masterProductArray == undefined){
     console.log(`--商品マスタ情報に問題があります。`)
@@ -222,7 +224,7 @@ module.exports.orderConfirm = async function(user, TIMESTAMP, postBackData){
     orderRecords.insertOrderRecord([orderRecords.getOrderArray(TIMESTAMP, postBackData.product.sheetId, masterProductArray, postBackData.product.orderNum, postBackData.product.deliveryday)])
 
     //発注完了メッセージ
-    const textMessage = "以下1件の発注が完了しました。\n\n"
+    const textMessage = "以下1件の発注が完了しました。\n\n" +
     
     "●" + postBackData.product.name + "\n" +
     postBackData.product.norm + "\n" +
@@ -235,8 +237,7 @@ module.exports.orderConfirm = async function(user, TIMESTAMP, postBackData){
     messagesArray.push(new StampMessage().ありがとう);    
     
     //在庫管理
-    await plSheet.setNewStock(postBackData.product.productId, STOCKNOW, postBackData.product.orderNum)
-    plSheet.sheet.saveUpdatedCells(); // save all updates in one call
+    plSheet.setNewStock(postBackData.product.productId, STOCKNOW, postBackData.product.orderNum).then(()=>{plSheet.sheet.saveUpdatedCells();})
   }
   return messagesArray
 }

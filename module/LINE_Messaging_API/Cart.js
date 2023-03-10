@@ -49,7 +49,7 @@ module.exports.getCarouselMessage = async (user, TIMESTAMP, STATE_NEWORDER, STAT
       plSheetVals = buff.plSheet.plSheetVals
     }
     else{
-      plSheet = new Products(user.SSIDS.spSheetId1, postBackData.product.sheetId)
+      plSheet = new Products(user.SECRETS.spSheetId1, postBackData.product.sheetId)
       await plSheet.getAllSheetData()
       plSheetVals = plSheet.plSheetVals
       plSheets[postBackData.product.sheetId] = {plSheet: plSheet}
@@ -66,6 +66,7 @@ module.exports.getCarouselMessage = async (user, TIMESTAMP, STATE_NEWORDER, STAT
     }
 
     //商品情報確認
+    //TODO: 買い物ボタン押下直後のみ
     STATE_PRODUCTINFO = Order.certificationProductInfo(postBackData, masterProductArray)
     const STOCKNOW = masterProductArray[property.constPL.columns.stockNow]
     if(STOCKNOW <= 0 || STATE_PRODUCTINFO){
@@ -105,6 +106,7 @@ module.exports.getCarouselMessage = async (user, TIMESTAMP, STATE_NEWORDER, STAT
       SD_FMT_LINE = timeMethod.getDeliverydayYMD(masterProductArray[property.constPL.columns.sDeliveryday], 0)
       ED_FMT_LINE = timeMethod.getDeliverydayYMD(masterProductArray[property.constPL.columns.eDeliveryday], 1)
       
+      //納品日がテキスト確認
       const checkTextDeliveryday = Order.chechkTextDeliveryday(postBackData.product.deliveryday)
       //console.log(`checkTextDeliveryday: ${checkTextDeliveryday}`)
 
@@ -119,63 +121,42 @@ module.exports.getCarouselMessage = async (user, TIMESTAMP, STATE_NEWORDER, STAT
         }
         else{
           textDeliverydayState[1] += ", " + cartPNum
-        }        
+        }
       }
       //納品日がテキストでなく、納品日チェックが不要
       else if(STATE_CHECK_DELIVERYDAY == 0){
         textDeliveryday = "希望市場納品日：" + timeMethod.getDisplayFmtDate(postBackData.product.deliveryday)
       }
-      //納品日がテキストでなく、納品日チェックが必要
-      else{
-        //荷受け日、ブロック日確認
-        if(STATE_CHECK_DELIVERYDAY == 1){
-          //TODO: スキップ 荷受け日、ブロック日確認 納品終了日が荷受け日のとき、翌競り日にすると納品期間外になってしまう。。。
-          stateDeliveryday = Order.certificationDeliveryday(checkTextDeliveryday[1])//[newDeliveryday, changeStateDeliveryday]
-          changeStateDeliveryday = stateDeliveryday[1]
+      
+      //納品期間確認
+      else if(STATE_CHECK_DELIVERYDAY == 2){
+        stateDeliveryday = Order.certificationdeliveryPeriod(postBackData.product.deliveryday, SD_FMT_LINE, ED_FMT_LINE)//[newDeliveryday, changeStateDeliveryday]
+        changeStateDeliveryday = stateDeliveryday[1]
 
-          //変わったらpostBackData書き換え
-          if(changeStateDeliveryday){
-            postBackData.product.deliveryday = stateDeliveryday[0]
-            user.property.CART[i] = postBackData.product            
+        //変わったらpostBackData書き換え
+        if(changeStateDeliveryday){
+          postBackData.product.deliveryday = stateDeliveryday[0]
+          user.property.CART[i] = postBackData.product
 
-            //注意メッセージ 追記
-            textDeliveryday = "希望市場納品日：" + timeMethod.getDisplayFmtDate(stateDeliveryday[0]) + "\n※翌競り日に変更しました"
-            changeCart = true            
+          //注意メッセージ 追記
+          textDeliveryday = "希望市場納品日：" + stateDeliveryday[0] //テキスト
+          
+          //納品期間外メッセージ
+          textDeliverydayState[0] = true
+          if(textDeliverydayState[1] == "商品No."){
+            textDeliverydayState[1] += cartPNum
           }
           else{
-            textDeliveryday = "希望市場納品日：" + timeMethod.getDisplayFmtDate(checkTextDeliveryday[1])
-          }                   
+            textDeliverydayState[1] += ", " + cartPNum
+          }
+          
+          changeCart = true
         }
-
-        //納品期間確認
-        else if(STATE_CHECK_DELIVERYDAY == 2){
-          stateDeliveryday = Order.certificationdeliveryPeriod(postBackData.product.deliveryday, SD_FMT_LINE, ED_FMT_LINE)//[newDeliveryday, changeStateDeliveryday]
-          changeStateDeliveryday = stateDeliveryday[1]
-
-          //変わったらpostBackData書き換え
-          if(changeStateDeliveryday){
-            postBackData.product.deliveryday = stateDeliveryday[0]
-            user.property.CART[i] = postBackData.product
-
-            //注意メッセージ 追記
-            textDeliveryday = "希望市場納品日：" + stateDeliveryday[0] //テキスト
-            
-            //納品期間外メッセージ
-            textDeliverydayState[0] = true
-            if(textDeliverydayState[1] == "商品No."){
-              textDeliverydayState[1] += cartPNum
-            }
-            else{
-              textDeliverydayState[1] += ", " + cartPNum
-            }
-            
-            changeCart = true
-          }
-          else{
-            textDeliveryday = "希望市場納品日：" + timeMethod.getDisplayFmtDate(checkTextDeliveryday[1])
-          }                    
-        }                
+        else{
+          textDeliveryday = "希望市場納品日：" + timeMethod.getDisplayFmtDate(checkTextDeliveryday[1])
+        }                    
       }
+
       //body
       imageContents = flexMessage_ForBuyer.getCardbodyStockNow(imageContents, "残" + STOCKNOW + "口")  //残口
       picUrl = masterProductArray[property.constPL.columns.picUrl] //商品画像
@@ -220,10 +201,14 @@ module.exports.getCarouselMessage = async (user, TIMESTAMP, STATE_NEWORDER, STAT
     command: "allDelete"
   }  
   if(textDeliverydayState[0]){
-    //TODO: 発注確定ボタンを表示しない。
     textMessage += textDeliverydayState[1] + "は時間経過により納品期間外の日付が指定されています。\n希望納品日を再指定してください。"
-    //const endCard = flexMessage_ForBuyer.getCardOrderCertification(explainText, "発注確定", postBackData_OrderConfirm, "買い物かご\nリセット", postBackData_allDelete)
-    //columns.push(endCard)    
+    
+    //説明文
+    let explainText = 
+      "希望商品・口数・納品日を\nご確認ください。\n\n" +
+      "「買い物かごリセット」ボタンを押すと、買い物かご内の商品がすべて削除できます。"    
+    const endCard = flexMessage_ForBuyer.getCardOnlyNegativeBottun(explainText, "買い物かご\nリセット", postBackData_allDelete)
+    columns.push(endCard)    
   }
   else{
     //新規発注のみ
@@ -297,7 +282,7 @@ module.exports.orderConfirm = async function(user, TIMESTAMP, reOrderConfirm_STA
       plSheetVals = buff.plSheet.plSheetVals
     }
     else{
-      plSheet = new Products(user.SSIDS.spSheetId1, postBackData.product.sheetId)
+      plSheet = new Products(user.SECRETS.spSheetId1, postBackData.product.sheetId)
       await plSheet.getAllSheetData()            
       plSheetVals = plSheet.plSheetVals
       plSheets[postBackData.product.sheetId] = {
@@ -457,9 +442,8 @@ module.exports.orderConfirm = async function(user, TIMESTAMP, reOrderConfirm_STA
       }
     }
 
-    textMessage = "以下" + ORDER_NUM + "件の発注が完了しました。\n\n" + 
-      textProdcutsOrderConfirm + 
-
+    textMessage = "以下" + ORDER_NUM + "件の発注が完了しました。\n\n" +
+      textProdcutsOrderConfirm + "\n\n" + 
       "またのご利用をお待ちしております。"
   }
 

@@ -17,7 +17,7 @@ const StampMessage = require("./LINE_Messaging_API/Class Stamp.js");
 //●オブジェクト：DBレベル//
 class User{
   constructor(){
-    this.SSIDS
+    this.SECRETS
 
     //インスタンス
     this.httpsRequest = "" //https
@@ -39,7 +39,8 @@ class User{
     CART:[],
     */
   }
-  //DB読み込み
+
+  //DB ユーザー情報読み込み
   async getBuyerPropertyFmDB(){
     if(this.DB_User_Buyer_Property !== undefined){return}//既に情報がある場合、再度取得不要
     const DB_User_Buyer  = await FireStore_API.getDocFmDB("user_buyer")
@@ -47,6 +48,28 @@ class User{
     this.DB_User_Buyer_docData = DB_User_Buyer[1]
     //console.log(`DB_user_buyer: ${this.DB_User_Buyer_docData}`)
   }
+
+  //TODO: ユーザーが増え速度が遅くなったとき対処
+  //浅いデータ構造を作るには以下のようにしたい
+  //DBを読みに行く回数が増えてしまうので、クエリインデックスを作成したい
+  //DB 単品発注内容 読み込み
+  /*
+  async getInstantOrderInfoPropertyFmDB(){
+    if(this.DB_User_Buyer_Property !== undefined){return}//既に情報がある場合、再度取得不要
+    const DB_InstantOrderInfo  = await FireStore_API.getDocFmDB("instantOrder")
+    this.DB_InstantOrderInfo_REF = DB_InstantOrderInfo[0]
+    this.DB_InstantOrderInfo_docData = DB_InstantOrderInfo[1]
+    //console.log(`DB_user_buyer: ${this.DB_User_Buyer_docData}`)
+  }  
+  //DB 買い物かご 読み込み
+  async getCartInfoPropertyFmDB(){
+    if(this.DB_CartInfo_Property !== undefined){return}//既に情報がある場合、再度取得不要
+    const DB_CartInfo  = await FireStore_API.getDocFmDB("cart")
+    this.DB_CartInfo_REF = DB_CartInfo[0]
+    this.DB_CartInfo_docData = DB_CartInfo[1]
+    //console.log(`DB_user_buyer: ${this.DB_User_Buyer_docData}`)
+  }
+  */
 
   //ユーザー認証 属性取得
   async authUser(){
@@ -60,11 +83,6 @@ class User{
     this.property = this.DB_User_Buyer_docData[this.ID]  
     //console.log(`DB_user_buyer: ${this.property}`)  
     return
-  }
-  //SSIDS 取得
-  async getSSIDs(){
-    const SSIDS_REF = await FireStore_API.getDocFmDB("spreadSheet")
-    this.SSIDS = SSIDS_REF[1]
   }
    
   //フォロー時処理
@@ -105,9 +123,13 @@ class User{
       [this.ID]: this.property
     })
   }
+  //単品発注内容 更新
+  update_instantOrderInfo(){
+
+  }
 
   //買い物かご情報 更新
-  async update_CartInfo(){
+  update_CartInfo(){
     // {[this.ID + ".CART"]: [this.property.CART]}  //キーに変数名を入れたい場合、[]で囲う！
     this.DB_User_Buyer_REF.update({
       [this.ID]: this.property
@@ -118,7 +140,7 @@ class User{
   //リッチメニュー切り替え
   setRichMenu(){
     this.httpsRequest.setRichMenu(this.ID, property.cartNum[this.property.CART.length])
-  } 
+  }
 }
 module.exports = User
 

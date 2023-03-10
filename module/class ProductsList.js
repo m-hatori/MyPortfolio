@@ -1,8 +1,9 @@
 /* eslint-disable semi-spacing */
 /* eslint-disable one-var */
-const property = require("./property.js");
-const timeMethod = require("./getTime.js");
+const property = require("../../src/module/property.js");
+const timeMethod = require("../../src/module/getTime.js");
 
+const FireStore_API = require("./npm API/FireStore_API.js");
 const SpreadSheet_API = require("./npm API/SpreadSheet_API.js");
 
 const message_JSON = require("./LINE_Messaging_API/message_JSON.js");
@@ -91,6 +92,14 @@ class Products{
   }
 
   //商品リスト 一覧取得
+  async getUpStateAllList(TIMESTAMP_NEW){
+    const upStateAllListMessage = await FireStore_API.getDocFmDB("ProductsInfo")
+    const messagesArray_text = upStateAllListMessage[1]["upStateList"].replace(/timeStampNew/g, TIMESTAMP_NEW)
+    //console.log(messagesArray_text)
+    const messagesArray = JSON.parse(messagesArray_text)    
+    return messagesArray
+  }
+  /*  
   async getUpStateAllList(ORERBUTTON_STATE, OPTION_UPSTATE, TIMESTAMP_NEW){
     //●前処理
     await this.getSheet()
@@ -158,6 +167,7 @@ class Products{
     //console.log(message)
     return messagesArray    
   }
+  */
 
   //1商品リスト 取得
   async getAllproductInfo(ORERBUTTON_STATE, OPTION_UPSTATE, TIMESTAMP_NEW) {
@@ -305,6 +315,7 @@ class Products{
         producer: masterProductArray[property.constPL.columns.numA] + "-" + masterProductArray[property.constPL.columns.numB] + " " +  masterProductArray[property.constPL.columns.producerName],
         name: masterProductArray[property.constPL.columns.name] ,
         norm: masterProductArray[property.constPL.columns.norm],
+        stockNow: masterProductArray[property.constPL.columns.stockNow],
         orderState: 0, // 発注情報 未確認: 0,  発注情報 未確認(2回目以降はテキストメッセージ不要):2, 発注情報 確認済み: 1
         orderNum: 1,
         deliveryday: timeMethod.getDateFMSpreadSheetToLINE(masterProductArray[property.constPL.columns.sDeliveryday], "LINE")//Deliveryday def:納品開始日 

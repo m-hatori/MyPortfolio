@@ -30,7 +30,7 @@ const StampMessage = require("./LINE_Messaging_API/Class Stamp.js");
 class OrderRecords{
   // プロパティを追加する
   constructor(user) {
-    this.SSID = user.SSIDS.spSheetId3
+    this.SSID = user.SECRETS.spSheetId3
     this.document = null
     this.sheetId = 0
     this.sheet = null

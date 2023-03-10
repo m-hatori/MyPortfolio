@@ -2,38 +2,36 @@
 /* eslint-disable no-invalid-this */
 /* eslint-disable one-var */
 const functions = require('firebase-functions');
-
 require("date-utils");
 
-const Products = require("./module//class ProductsList.js");
+const Products = require("./module/class ProductsList.js");
 const User = require("./module/class UsersList.js");
 const branch_postBack = require("./module/branch_postBack.js");
 //const branch_text = require("./module/branch_text.js");
-const FireStore_API = require("./module/npm API/FireStore_API.js");
 const HttpsRequest = require("./module/npm API/axios_API.js");
-
+const SECRET = require("./module/npm API/secret.js");
 const message_JSON = require("./module/LINE_Messaging_API/message_JSON.js")
 
 //●テキストメッセージ処理分岐
 //TODO: postBackへ移行する
-
 async function branchOfTextMessage(TIMESTAMP_NEW, textMessage, user){  
-  const message_JSON_irregular = require("./module/LINE_Messaging_API/Irregular.js");
-  const Cart = require("./module/LINE_Messaging_API/Cart.js")
-
   let messagesArray = []
   if(textMessage == "商品情報リスト表示"){
-    const products = new Products(user.SSIDS.spSheetId1)
+    const products = new Products(user.SECRETS.spSheetId1)
 
     //TODO: スキップ ORERBUTTON_STATE 発注可能 1 , OPTION_UPSTATE 掲載中 1 → 買参人向けは固定だから判断しなくてもいい。
-    messagesArray = await products.getUpStateAllList(1, 1, TIMESTAMP_NEW)  //買参人用、掲載中, タイムスタンプ
+    messagesArray = await products.getUpStateAllList(TIMESTAMP_NEW)  //買参人用、掲載中, タイムスタンプ
     if(messagesArray.length > 0){
       messagesArray.push(message_JSON.getTextMessage("商品リストを上に表示しました。\n「詳細」ボタンを押すと、掲載中の商品をご確認いただけます。"))
     }
   }
   else if(textMessage == "買い物かご確認"){
+    const Cart = require("./module/LINE_Messaging_API/Cart.js")
     //買い物かご内情報確認
-    if(user.property.CART.length <= 0){return message_JSON_irregular.whenZeroProductInCart()}
+    if(user.property.CART.length <= 0){
+      const message_JSON_irregular = require("./module/LINE_Messaging_API/Irregular.js");    
+      return message_JSON_irregular.whenZeroProductInCart()
+    }
 
     //買い物かご更新
     //カルーセルメッセージ取得
@@ -55,10 +53,6 @@ async function branchOfTextMessage(TIMESTAMP_NEW, textMessage, user){
     //変数定義
     let columns = []
 
-    const FILES_REF = await FireStore_API.getDocFmDB("files")
-    const FILES = FILES_REF[1]
-    if(FILES === null){return}
-
     //発注履歴 
     const postBackData = {
       tag: "menu",
@@ -67,10 +61,10 @@ async function branchOfTextMessage(TIMESTAMP_NEW, textMessage, user){
     columns.push(message_JSON.getMenubutton("発注履歴", postBackData))
     
     //マニュアル
-    columns.push(message_JSON.getMenubuttonURL("マニュアル", FILES.manualForBuyer, FILES.manualForBuyer))
+    columns.push(message_JSON.getMenubuttonURL("マニュアル", process.env.MANUAL_FOR_BUYER, process.env.MANUAL_FOR_BUYER))
 
     //利用規約
-    columns.push(message_JSON.getMenubuttonURL("利用規約", FILES.termsForBuyer, FILES.termsForBuyer))
+    columns.push(message_JSON.getMenubuttonURL("利用規約", process.env.TERMS_FOR_BUYER, process.env.TERMS_FOR_BUYER))
     
     messagesArray.push(message_JSON.getflexCarouselMessage("メニュー", [message_JSON.getCarouselMenulMessageCard(columns)]))
   }
@@ -81,44 +75,42 @@ async function branchOfTextMessage(TIMESTAMP_NEW, textMessage, user){
 }
 
 //署名検証
-function authSecretKey(SIGNATURE, BODY, CHANNELSECRET){
+async function authSecretKey(CHANNELSECRET, request){
   const crypto = require('crypto');
   const SIGNATURE_DIGEST = crypto
     .createHmac("SHA256", CHANNELSECRET)
-    .update(JSON.stringify(BODY))
+    .update(JSON.stringify(request.body))
     .digest("base64");
   //console.log(`SIGNATURE_DIGEST : ${SIGNATURE_DIGEST}`)
   
-  if(SIGNATURE == SIGNATURE_DIGEST){
+  if(request.headers["x-line-signature"] == SIGNATURE_DIGEST){
     return true
   }
   else{
     return false
   }
 }
-
+//Post受信
 module.exports.helloWorld =  functions
   .runWith({
     timeoutSeconds: 10,
-    minInstances: 1, //最低 5 つのインスタンスを保温に設定 応答速度に影響 コストがかかる  
-    maxInstances: 10,
-    //memory: "1GB",  //コストがかかる    
+    //minInstances: 1, //最低 5 つのインスタンスを保温に設定 応答速度に影響 コストがかかる  
+    //maxInstances: 10,
+    //memory: "1GB",  //呼び出し回数の無料枠を超えると、コストがかかる。メモリ容量を大きくすると、有料枠の単価が上がる。
   })
   .region("asia-northeast1")
   .https.onRequest(async (request, response) => {
     try{
       if (request.method === "POST"){
         //リクエスト 前処理
-        const SECRET_REF = await FireStore_API.getDocFmDB("secret")
+        const SECRETS = JSON.parse(await SECRET.secrets())
 
         //httpsRequest インスタンス にアクセストークン格納
-        const httpsRequest = new HttpsRequest(SECRET_REF[1].ACCESSTOKEN)
-        //const httpsRequest = new HttpsRequest(ACCESSTOKEN.value())
+        const httpsRequest = new HttpsRequest()
+        httpsRequest.ACCESSTOKEN = SECRETS.ACCESSTOKEN
 
         //署名確認
-        const SIGNATURE = authSecretKey(request.headers["x-line-signature"], request.body, SECRET_REF[1].CHANNELSECRET)
-        //const SIGNATURE = authSecretKey(request.headers["x-line-signature"], request.body, CHANNELSECRET.value())
-
+        const SIGNATURE = await authSecretKey(SECRETS.CHANNELSECRET, request)
         if(SIGNATURE){
           const HACKTEXT = /[`$<>*?!(){};|]/g         
           const events = request.body.events
@@ -136,11 +128,12 @@ module.exports.helloWorld =  functions
             const user = new User()
             user.ID = event.source.userId
             user.ID = user.ID.replace(HACKTEXT, "")//ハッキング警戒文字列を削除;
+            user.SECRETS = SECRETS
             user.httpsRequest = httpsRequest
             
-            let messagesArray = [];          
-            await Promise.all([user.authUser(), user.getSSIDs()])
-
+            await user.authUser()
+            
+            let messagesArray = [];
             if(eventType == "message"){
               //メッセージタイプ分岐
               const messageType = event.message.type
@@ -176,18 +169,16 @@ module.exports.helloWorld =  functions
           }))        
         }
         else{
-          console.error(`signature Error`);
-          return null
+          return console.error(`signature Error`);          
         }
         
       }
       else{
-        return
+        return console.error(`NOT POST REQUEST`);
       }
     }
     catch(e){
-      console.error(e)
-      return
+      return console.error(e)      
     }
     finally{
       response.end()

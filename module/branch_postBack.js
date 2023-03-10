@@ -59,8 +59,8 @@ const checkTimeStamp = async (TIMESTAMP, TIMESTAMP_NEW, TAG, user) =>{
     else{
       //商品リストの一覧表示
       timeStampState += "商品リスト一覧表示"
-      const products = new Products(user.SSIDS.spSheetId1)
-      messagesArray = await products.getUpStateAllList(1, 1, TIMESTAMP_NEW)
+      const products = new Products(user.SECRETS.spSheetId1)
+      messagesArray = await products.getUpStateAllList(TIMESTAMP_NEW)
       textMessage += "\n\n上の再表示した商品リストより、再度手続きをお願いいたします。"
       messagesArray.push(message_JSON.getTextMessage(textMessage))
     }
@@ -116,7 +116,7 @@ module.exports.process = async (event, TIMESTAMP_NEW, postBackData, user) => {
     if(TAG == "productsList"){
       //productsList--TIMESTAMP/シートID/orderbutton:発注ボタンありorなし/state：掲載中or確認中
       
-      const products = new Products(user.SSIDS.spSheetId1, postBackData.product.sheetId)
+      const products = new Products(user.SECRETS.spSheetId1, postBackData.product.sheetId)
       messagesArray = await products.getAllproductInfo(postBackData.product.ORERBUTTON_STATE, postBackData.product.OPTION_UPSTATE, TIMESTAMP_NEW)
     }
     
@@ -129,11 +129,11 @@ module.exports.process = async (event, TIMESTAMP_NEW, postBackData, user) => {
         console.log(`${CONSOLE_STATE}: 商品追加`)
         if(user.property.CART.length < 10){
           //商品情報追加 配列末尾に
-          await user.property.CART.push(postBackData.product)
-          messagesArray.push(message_JSON.getTextMessage("追加しました。"))
+          user.property.CART.push(postBackData.product).then(()=>{
+            user.update_CartInfo()//買い物かご更新
+          })
 
-          //買い物かご更新
-          user.update_CartInfo()//DB更新
+          messagesArray.push(message_JSON.getTextMessage("追加しました。"))
           return messagesArray
         }
         else{
@@ -193,6 +193,7 @@ module.exports.process = async (event, TIMESTAMP_NEW, postBackData, user) => {
 
     
       //買い物かご内 商品情報 有無確認
+      //TODO:動作を重くしている。許容するか
       const CARTINFOARRAY_INDEX = await (async () => {
         let index, BUFF_TEXT, state = "-買い物かご内 商品情報 なし"
         for(index in user.property.CART){
@@ -220,10 +221,7 @@ module.exports.process = async (event, TIMESTAMP_NEW, postBackData, user) => {
       //2 希望口数伺い クイックリプライメッセージ
       else if(COMMAND == "selectOrderNum"){
         console.log(`${CONSOLE_STATE}: 希望口数伺い`)
-        messagesArray = await Order.selectOrderNum(user.SSIDS.spSheetId1, postBackData)
- 
-        //買い物かご更新
-        user.update_CartInfo()//DB更新
+        messagesArray = await Order.selectOrderNum(postBackData)
       }
       //3 希望口数指定 買い物かごに反映
       else if(COMMAND == "setOrderNum"){
@@ -248,15 +246,18 @@ module.exports.process = async (event, TIMESTAMP_NEW, postBackData, user) => {
       //4 納品日指定 買い物かご情報に希望市場納品日を追記。メニューに切り替え。
       else if(COMMAND == "setDeliveryday"){
         console.log(`${CONSOLE_STATE}: 納品日指定`)
-        //納品日更新 DB書き換え
-        postBackData.product.deliveryday = event.postback.params.date
         postBackData.product.orderState = 0 //発注状況 リセット
+
+        //納品日更新 DB書き換え
+        //荷受け日、ブロック日確認
+        const stateDeliveryday = Order.certificationDeliveryday(event.postback.params.date)//[newDeliveryday, changeStateDeliveryday]
+        postBackData.product.deliveryday = stateDeliveryday[0]
         user.property.CART[CARTINFOARRAY_INDEX] = postBackData.product
 
         //買い物かご カルーセルメッセージ送信
         //STATE_NEWORDER 新規発注確認: true
         //STATE_CHECK_DELIVERYDAY 荷受け日・ブロック日チェック: 1
-        messagesArray = await Cart.getCarouselMessage(user, TIMESTAMP_NEW, true, 1)//希望納品日が荷受け日、ブロック日でないか確認
+        messagesArray = await Cart.getCarouselMessage(user, TIMESTAMP_NEW, true, 0)
         messagesArray.unshift(message_JSON.getTextMessage("No." + (Number(CARTINFOARRAY_INDEX) + 1) + "の納品日を変更しました。"))
 
         //買い物かご更新
@@ -267,17 +268,17 @@ module.exports.process = async (event, TIMESTAMP_NEW, postBackData, user) => {
         console.log(`${CONSOLE_STATE}: 1商品削除`)
         //削除
         user.property.CART.splice(CARTINFOARRAY_INDEX, 1)
-        
+
+        //買い物かご更新
+        await user.update_CartInfo()//DB更新
+
         //テキストメッセージ返信
         //STATE_NEWORDER 新規発注確認: true、追加発注確認: false
-        //STATE_CHECK_DELIVERYDAY 納品日チェック不要:0        
+        //STATE_CHECK_DELIVERYDAY 納品日チェック不要:0
         if(user.property.CART.length > 0){
           messagesArray = await Cart.getCarouselMessage(user, TIMESTAMP_NEW, true, 0)
         }
         messagesArray.unshift(message_JSON.getTextMessage("削除しました。"))
-        
-        //買い物かご更新
-        user.update_CartInfo()//DB更新
       }
     }
     
@@ -288,6 +289,15 @@ module.exports.process = async (event, TIMESTAMP_NEW, postBackData, user) => {
       //0 発注内容確認 発注ボタン押下後、口数1~10ボタン押下後
       if(COMMAND == "check"){
         console.log(`${CONSOLE_STATE}: 発注内容確認`)
+
+        //単品発注内容をDBに格納
+        const {plSheet, masterProductArray} = Order.getProductsInfo(user, postBackData)
+        postBackData.product[""] = 
+        user.property.insta.push(postBackData.product).then(()=>{
+          user.update_CartInfo()//買い物かご更新
+        })
+
+
         //納品日チェック STATE_CHECK_DELIVERYDAY  テキスト、納品期間チェック不要:0
         //STATE_CHECK_DELIVERYDAY 納品日チェック不要:0  最短納品日が格納されるため
         messagesArray = await OneOrder.getCarouselMessage(user, postBackData)
@@ -295,7 +305,7 @@ module.exports.process = async (event, TIMESTAMP_NEW, postBackData, user) => {
       //1 希望口数伺い クイックリプライメッセージ
       else if(COMMAND == "selectOrderNum"){
         console.log(`${CONSOLE_STATE}: 希望口数伺い`)
-        messagesArray = await Order.selectOrderNum(user.SSIDS.spSheetId1, postBackData)
+        messagesArray = await Order.selectOrderNum(postBackData)
       }
       //2 希望口数指定 postBackDataに反映
       else if(COMMAND == "setOrderNum"){

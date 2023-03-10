@@ -9,22 +9,35 @@ const Products = require("../class ProductsList.js");
 const action_JSON = require("./Action_JSON.js");
 const Irregular = require("./Irregular.js");
 
+//●商品情報取得
+async function getProductsInfo(user, postBackData) {
+  //同一商品IDの商品情報を抽出
+  const plSheet = new Products(user.SECRETS.spSheetId1, postBackData.product.sheetId) 
+  const masterProductArray = await plSheet.getRowData(postBackData.product.productId)
+  //console.log(`masterProductArray : ${masterProductArray}`)
+  if(masterProductArray === undefined){
+    console.log(`商品マスタ情報に問題があります。`)
+    console.log(`シートID : ${postBackData.product.sheetId} 商品ID : ${postBackData.product.productId}`)
+  }
+  return [plSheet, masterProductArray]
+}
 
 //●希望口数伺い
-async function selectOrderNum(spSheetId1, postBackData) {
+async function selectOrderNum(postBackData) {
   let messagesArray = [], items = []
 
+  //在庫確認 15分は保証し確認しない
   //商品情報 現在庫取得
-  const plSheet= new Products(spSheetId1, postBackData.product.sheetId)
-  const masterProductArray = await plSheet.getRowData(postBackData.product.productId)
+  //const plSheet= new Products(spSheetId1, postBackData.product.sheetId)
+  //const masterProductArray = await plSheet.getRowData(postBackData.product.productId)
   
   //在庫確認
-  const stockNow = masterProductArray[property.constPL.columns.stockNow]  
-  if(stockNow == 0){return Irregular.whenStockNone()}
+  //const stockNow = masterProductArray[property.constPL.columns.stockNow]  
+  //if(stockNow == 0){return Irregular.whenStockNone()}
 
   //最大発注可能数
   let maxOrderNum = 10
-  if(stockNow < maxOrderNum ){maxOrderNum = stockNow}
+  if(postBackData.product.stockNow < maxOrderNum ){maxOrderNum = postBackData.product.stockNow}
 
   //●メッセージ作成・送信
   postBackData.command = "setOrderNum"
@@ -194,7 +207,7 @@ function certificationdeliveryPeriod(deliveryday, SD_FMT_LINE, ED_FMT_LINE){
   if(unixD < unixsD  || unixeD < unixD){
     console.log(`--納品期間 外`)
     //納品日書き換え
-      text = "--納品期間外のため、再指定してください。"
+      text = "納品期間外のため、再指定してください。"
       changeState = true
       console.log("---納品開始日:" + sDDate + "  unix:" + unixsD)
       console.log("---希望納品日:" + deliveryDate + "  unix:" + unixD)
@@ -209,6 +222,7 @@ function certificationdeliveryPeriod(deliveryday, SD_FMT_LINE, ED_FMT_LINE){
 }
 
 module.exports = {
+  getProductsInfo,
   selectOrderNum,
   certificationProductInfo,
   chechkTextDeliveryday,

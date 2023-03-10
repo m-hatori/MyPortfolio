@@ -1,15 +1,17 @@
+/* eslint-disable node/no-missing-require */
 /* eslint-disable one-var */
-//TODO: シークレットサービスを使用する
-const firebaseServiceAccount = require("../../../linebot-for-buyer_firebase_ServiceAccount.json"); 
-
-//コレクション取得時 初期化
+//独自のサーバーで初期化
+const SECRET = require("./secret.js");
 const admin = require("firebase-admin");
-admin.initializeApp({credential: admin.credential.cert(firebaseServiceAccount)});
-const db = admin.firestore();
-const docCol = db.collection("LINEBot");
 
 //読み込み
 module.exports.getDocFmDB = async (docName) => {
+  const jsonfile = JSON.parse(await SECRET.fb_serviceAccount())
+  if (admin.apps.length === 0) {
+    admin.initializeApp({credential: admin.credential.cert(jsonfile)});
+  }
+  const db =  admin.firestore();
+  const docCol = db.collection("LINEBot");
   const docRef = await docCol.doc(docName)
 
   /*
@@ -19,21 +21,15 @@ module.exports.getDocFmDB = async (docName) => {
   };
   */
 
-  //docRef.get(getOptions).then((doc) => {
-  return docRef.get()
-    .then((doc) => {    
-      if (doc.exists) {
-        const docData = doc.data()
-        return [docRef, docData]
-      }else {
-        throw new Error("No such document!")
-      }
-    }).catch((error) => {
-      console.log(error);
-    }); 
+  //return docRef.get(getOptions).then((doc) => {
+  return docRef.get().then((doc) => {
+    if (doc.exists) {
+      const docData = doc.data()
+      return [docRef, docData]
+    }else {
+      throw new Error("No such document!")
+    }
+  }).catch((error) => {
+    console.log(error);
+  });
 }
-/*
-(async function(){
-  console.log(await module.exports.getDocFmDB("secret"))
-}())
-*/
