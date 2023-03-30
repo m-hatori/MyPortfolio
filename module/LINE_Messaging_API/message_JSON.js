@@ -2,7 +2,7 @@ const action_JSON = require("./Action_JSON.js");
 
 //●●●メッセージ●●●
 //●テキストメッセージ
-function getTextMessage(textMessage) {
+module.exports.getTextMessage = (textMessage) => {
   return {
     "type": "text",
     "text": textMessage //最大文字数：5000
@@ -10,7 +10,7 @@ function getTextMessage(textMessage) {
 }
 
 //●位置情報メッセージ
-function getLocationMessage(title, address, latitude, longitude) {
+module.exports.getLocationMessage = (title, address, latitude, longitude) => {
   return {
     "type": "location",
     "title": title,
@@ -21,7 +21,7 @@ function getLocationMessage(title, address, latitude, longitude) {
 }
 
 //●テンプレートメッセージ
-function getTemplateCarouselMessage(altText, columns){
+module.exports.getTemplateCarouselMessage = (altText, columns) => {
   return {
     "type":"template",
     "altText":altText,
@@ -35,7 +35,7 @@ function getTemplateCarouselMessage(altText, columns){
 }
 
 //●動画メッセージ
-function getVideoMessage(videoURL, previewImageUrl, trackingId){
+module.exports.getVideoMessage = (videoURL, previewImageUrl, trackingId) => {
   return {
     "type": "video",
     "originalContentUrl": videoURL,
@@ -51,7 +51,7 @@ function getVideoMessage(videoURL, previewImageUrl, trackingId){
 }
 
 //●Flexメッセージ
-function getflexCarouselMessage(altText, columns){
+module.exports.getflexCarouselMessage = (altText, columns) => {
   return {
     "type":"flex",
     "altText":altText,
@@ -63,7 +63,7 @@ function getflexCarouselMessage(altText, columns){
 }
 
 //●Flexメッセージ Menu
-function getCarouselMenulMessageCard(columns){
+module.exports.getCarouselMenulMessageCard = (columns) => {
   return {
     "type": "bubble",
     "size": "micro",
@@ -93,7 +93,7 @@ function getCarouselMenulMessageCard(columns){
 }
 
 //●Flex Message 商品カードボタン
-function getProductCardbutton(action){
+module.exports.getProductCardbutton = (action) => {
   return {
     "type": "button",
     "style": "primary",
@@ -104,7 +104,7 @@ function getProductCardbutton(action){
 }
 
 //●Flex Message メニューボタン
-function getMenubutton(label, POST_BACK_DATA){
+module.exports.getMenubutton = (label, POST_BACK_DATA) => {
   return {
     "type": "button",
     "height": "sm",
@@ -113,7 +113,7 @@ function getMenubutton(label, POST_BACK_DATA){
   }
 }
 
-function getMenubuttonURL(label, url, deskTopUrl){
+module.exports.getMenubuttonURL = (label, url, deskTopUrl) => {
   return {
     "type": "button",
     "height": "sm",
@@ -123,7 +123,7 @@ function getMenubuttonURL(label, url, deskTopUrl){
 }
 
 //●商品画像登録 クイックリプライ
-function getPicRegisterMessage() {
+module.exports.getPicRegisterMessage = () => {
   return [{
     "type": "text",
     "text": "画像を送信してください",
@@ -146,17 +146,4 @@ function getPicRegisterMessage() {
       ],
     },
   }]; 
-}
-  
-module.exports = {
-  getTextMessage,
-  getLocationMessage,
-  getTemplateCarouselMessage,
-  getVideoMessage,
-  getflexCarouselMessage,
-  getCarouselMenulMessageCard,
-  getProductCardbutton,
-  getMenubutton,
-  getMenubuttonURL,
-  getPicRegisterMessage
 }

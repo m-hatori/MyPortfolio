@@ -32,12 +32,11 @@ class StampMessage{
 
 
   getStampMessage(stickerId){
-    let message  ={
+    return {
       "type": "sticker",
       "packageId": 8515,
       "stickerId": stickerId
-      }
-    return message
+    }
   }
 
 }

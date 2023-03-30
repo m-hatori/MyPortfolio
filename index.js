@@ -10,6 +10,7 @@ const branch_postBack = require("./module/branch_postBack.js");
 //const branch_text = require("./module/branch_text.js");
 const HttpsRequest = require("./module/npm API/axios_API.js");
 const SECRET = require("./module/npm API/secret.js");
+
 const message_JSON = require("./module/LINE_Messaging_API/message_JSON.js")
 
 //●テキストメッセージ処理分岐
@@ -17,13 +18,14 @@ const message_JSON = require("./module/LINE_Messaging_API/message_JSON.js")
 async function branchOfTextMessage(TIMESTAMP_NEW, textMessage, user){  
   let messagesArray = []
   if(textMessage == "商品情報リスト表示"){
-    const products = new Products(user.SECRETS.spSheetId1)
+    const products = new Products()
 
     //TODO: スキップ ORERBUTTON_STATE 発注可能 1 , OPTION_UPSTATE 掲載中 1 → 買参人向けは固定だから判断しなくてもいい。
     messagesArray = await products.getUpStateAllList(TIMESTAMP_NEW)  //買参人用、掲載中, タイムスタンプ
-    if(messagesArray.length > 0){
-      messagesArray.push(message_JSON.getTextMessage("商品リストを上に表示しました。\n「詳細」ボタンを押すと、掲載中の商品をご確認いただけます。"))
-    }
+    
+    //if(messagesArray.length > 0){
+    //  messagesArray.push(message_JSON.getTextMessage("商品リストを上に表示しました。\n「詳細」ボタンを押すと、掲載中の商品をご確認いただけます。"))
+    //}
   }
   else if(textMessage == "買い物かご確認"){
     const Cart = require("./module/LINE_Messaging_API/Cart.js")
@@ -39,11 +41,7 @@ async function branchOfTextMessage(TIMESTAMP_NEW, textMessage, user){
     //STATE_CHECK_DELIVERYDAY 納品期間チェック: 2
     messagesArray = await Cart.getCarouselMessage(user, TIMESTAMP_NEW, true, 2)
 
-    const textMessage = "買い物かご情報を上に表示しました。\n" +
-    "買い物かご追加直後の商品は、希望口数は1、希望市場納品日は最短納品可能日が指定されています。\n\n" +
-    "「口数」、「納品日」ボタンを押すと、それぞれ変更できます。\n\n" +
-    "「削除」ボタンを押すと、買い物かごから削除できます。\n\n" +
-    "操作が反映されていないときは、再度買い物かごボタンを押してください。"
+    const textMessage = "最初は、希望口数1、最短納品可能日が指定されています。\n\n「口数」、「納品日」ボタンを押すと、それぞれ変更できます。"
     messagesArray.push(message_JSON.getTextMessage(textMessage))
 
     //リッチメニュー切り替え 保険
@@ -75,7 +73,7 @@ async function branchOfTextMessage(TIMESTAMP_NEW, textMessage, user){
 }
 
 //署名検証
-async function authSecretKey(CHANNELSECRET, request){
+const authSecretKey = (CHANNELSECRET, request) => {
   const crypto = require('crypto');
   const SIGNATURE_DIGEST = crypto
     .createHmac("SHA256", CHANNELSECRET)
@@ -90,12 +88,13 @@ async function authSecretKey(CHANNELSECRET, request){
     return false
   }
 }
+
 //Post受信
 module.exports.helloWorld =  functions
   .runWith({
     timeoutSeconds: 10,
-    //minInstances: 1, //最低 5 つのインスタンスを保温に設定 応答速度に影響 コストがかかる  
-    //maxInstances: 10,
+    minInstances: 1, //最低 5 つのインスタンスを保温に設定 応答速度に影響 コストがかかる  
+    maxInstances: 10,
     //memory: "1GB",  //呼び出し回数の無料枠を超えると、コストがかかる。メモリ容量を大きくすると、有料枠の単価が上がる。
   })
   .region("asia-northeast1")
@@ -103,15 +102,14 @@ module.exports.helloWorld =  functions
     try{
       if (request.method === "POST"){
         //リクエスト 前処理
-        const SECRETS = JSON.parse(await SECRET.secrets())
-
+        const SECRETS = JSON.parse(await SECRET.getString(process.env.SECRETS_NAME, process.env.SECRETS_VERSION))
+        
         //httpsRequest インスタンス にアクセストークン格納
         const httpsRequest = new HttpsRequest()
         httpsRequest.ACCESSTOKEN = SECRETS.ACCESSTOKEN
 
         //署名確認
-        const SIGNATURE = await authSecretKey(SECRETS.CHANNELSECRET, request)
-        if(SIGNATURE){
+        if(authSecretKey(SECRETS.CHANNELSECRET, request)){
           const HACKTEXT = /[`$<>*?!(){};|]/g         
           const events = request.body.events
           console.log(`events count: ${events.length}`)
@@ -127,7 +125,6 @@ module.exports.helloWorld =  functions
             //ユーザー認証
             const user = new User()
             user.ID = event.source.userId
-            user.ID = user.ID.replace(HACKTEXT, "")//ハッキング警戒文字列を削除;
             user.SECRETS = SECRETS
             user.httpsRequest = httpsRequest
             
@@ -156,6 +153,7 @@ module.exports.helloWorld =  functions
             }
             else if(eventType == "postback"){
               const postBackData = JSON.parse(event.postback.data.replace(/[`$<>*?!();|]/g,"")); //ハッキング警戒文字列を削除
+              console.log(`postBackData: ${JSON.stringify(postBackData)}`)
               messagesArray = await branch_postBack.process(event, TIMESTAMP_NEW, postBackData, user)
             }
             else if(eventType == "follow"){messagesArray = await user.follow()}
@@ -165,7 +163,8 @@ module.exports.helloWorld =  functions
             }            
             
             //返信
-            return httpsRequest.replyMessageByAxios(event, messagesArray)
+            if(messagesArray.length > 0){httpsRequest.replyMessageByAxios(event, messagesArray)}
+            return
           }))        
         }
         else{

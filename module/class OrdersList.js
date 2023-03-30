@@ -20,7 +20,7 @@ const StampMessage = require("./LINE_Messaging_API/Class Stamp.js");
   ・発注履歴がある cells.length>0
    ・発注履歴はあるが、新たに発注しようとしている履歴がある cells.length>0 & orderData == listdata return true
    ・発注履歴はあるが、新たに発注しようとしている履歴がない cells.length>0 & orderData != listdata return false
-  ・発注履歴がない cells.length<0
+  ・発注履歴がない cells.length<0allUserOrderData
 
   処理フロー
   セル位置全取得→各セル位置の発注履歴を取得→各発注履歴について、発注しようとしている情報との重複がないか確認→セル位置を返す。もしくはtrue or false
@@ -29,14 +29,18 @@ const StampMessage = require("./LINE_Messaging_API/Class Stamp.js");
 
 class OrderRecords{
   // プロパティを追加する
-  constructor(user) {
+  constructor(user) {    
+    //スプレッドシート 発注リスト パラメータ
     this.SSID = user.SECRETS.spSheetId3
-    this.document = null
-    this.sheetId = 0
-    this.sheet = null
-    this.user = user
-    this.allOrderData
+    this.document
+    this.sheetId = 0  //シートID 固定
+    this.sheet = SpreadSheet_API.dbSS_OrderList.doc.sheetsById[this.sheetId]
+    this.sheetData
 
+    //スプレッドシート 発注リスト ユーザーパラメータ
+    this.user = user
+    this.sheetDataOfTheUser
+    
     //属性と列
     this.columns = {
       "orderday":0,//発注日時
@@ -124,80 +128,63 @@ class OrderRecords{
   }
   //任意ユーザーの発注履歴を取得
   async getUserOrderData(){
-    //買参人情報
-    this.MARKET_ID = this.user.property.MARKET_ID
-    this.BRANCH_NUM = this.user.property.BRANCH_NUM
-    this.BUYER_NAME = this.user.property.BUYER_NAME
-        
     //発注全情報
-    if(this.document === null){
-      this.document = await SpreadSheet_API.getSpreadSheet(this.SSID)
+    
+    //*/
+    /* old
+    if(this.document === undefined){
+    this.document = await SpreadSheet_API.getSpreadSheet(process.env.SPREADSHEETID_ORDER)
     }
     this.sheet = this.document.sheetsById[this.sheetId]
-    
-    //全範囲取得
-    this.allOrderData = await this.sheet.getRows()
-    this.rowNum = this.allOrderData.length
-    this.eRow = this.rowNum - this.sRow + 1 //タイトル行を加える
+    */
 
-    //任意ユーザーの発注全情報
-    let userOrderArray = [], buff;
-    for(buff of this.allOrderData){
-      if(buff._rawData[this.columns.MARKET_ID] == this.MARKET_ID && buff._rawData[this.columns.BRANCH_NUM] == this.BRANCH_NUM){
-        userOrderArray.push(buff)
+    //全範囲取得
+    if(this.sheetData === undefined){
+      console.time(`--all range読み込み`)
+      this.sheetData = await this.sheet.getRows()
+      console.timeEnd(`--all range読み込み`)
+      this.rowNum = this.sheetData.length
+      this.eRow = this.rowNum - this.sRow + 1 //タイトル行を加える
+
+      //任意ユーザーの発注全情報
+      let userOrderArray = [], buff;
+      for(buff of this.sheetData){
+        if(buff._rawData[this.columns.MARKET_ID] == this.user.property.MARKET_ID && buff._rawData[this.columns.BRANCH_NUM] == this.user.property.BRANCH_NUM){
+          userOrderArray.push(buff)
+        }
       }
-    }
-    this.allUserOrderData = userOrderArray;
-    this.recordNum = this.allUserOrderData.length
-    //console.log(this.allUserOrderData)
-    console.log(`--発注履歴件数 : ${this.recordNum}`)    
+      this.sheetDataOfTheUser = userOrderArray;
+      this.recordNum = this.sheetDataOfTheUser.length
+      //console.log(this.sheetDataOfTheUser)
+      console.log(`--発注履歴件数 : ${this.recordNum}`)    
+    }    
   }
 
   //タイムスタンプと商品名が同一の発注履歴があるか確認
   //商品名が同じで、規格違い、または出荷者違いのものもブロックしてしまう。。。。 → 同様の商品を発注しないようにするにはいいかも。
   async checkOrderRecordTimeStamp(TIMESTAMP, NEW_PRODUCT_NAME){
-    //console.log(TIMESTAMP)
     TIMESTAMP = Math.floor(TIMESTAMP/1000) //unixTime(sec)
-    //console.log(`新規発注日時: ${TIMESTAMP}, 新規発注商品名: ${NEW_PRODUCT_NAME}`)
+    console.log(`--新規発注日時: ${TIMESTAMP}, 新規発注商品名: ${NEW_PRODUCT_NAME}`)
 
     let unixTimeOrderday
-    await (async () => {
-      for(let buff of this.allUserOrderData){
-        const ORDERED_PRODUCT_NAME = buff._rawData[this.columns.prductName]
-        const ORDERED_DAY = buff._rawData[this.columns.orderday]
-        unixTimeOrderday = await this.getDateFMOrderDay(ORDERED_DAY).getTime()/1000 //unixTime(sec)
-        //console.log(`過去発注日時: ${ORDERED_DAY}`)
-        //console.log(`過去発注日時: ${unixTimeOrderday}, 過去発注商品名: ${ORDERED_PRODUCT_NAME}`)
+    for(let buff of this.sheetDataOfTheUser){
+      const ORDERED_PRODUCT_NAME = buff._rawData[this.columns.prductName]
+      const ORDERED_DAY = buff._rawData[this.columns.orderday]
+      unixTimeOrderday = timeMethod.getDateFMOrderDay(ORDERED_DAY).getTime()/1000 //unixTime(sec)
+      console.log(`--過去発注日時: ${ORDERED_DAY}(${unixTimeOrderday}), 過去発注商品名: ${ORDERED_PRODUCT_NAME}`)
 
-        //発注日時と商品名が重複するか確認
-        if(unixTimeOrderday == TIMESTAMP && ORDERED_PRODUCT_NAME == NEW_PRODUCT_NAME){
-          console.log("発注済み確認: 済")
-          return true
-        }
+      //発注日時と商品名が重複するか確認
+      if(unixTimeOrderday == TIMESTAMP && ORDERED_PRODUCT_NAME == NEW_PRODUCT_NAME){
+        console.log("発注済み確認: 済")
+        return true
       }
-    })
+    }    
     console.log("発注済み確認: 未")
     return false;
   }
 
-  //発注日時 'yy/mm/dd hh:mm:ss → Date()
-  getDateFMOrderDay(orderDay){
-    let buff = orderDay.split(" ")
-    buff[0] = buff[0].split("/")
-    const yyyy  = new Date().getFullYear().toString().substr(0, 2) + buff[0][0].replace("’", "")//もっといい方法ないかな
-    const MM = Number(buff[0][1]) - 1
-    const dd  = buff[0][2]
-    buff[1] = buff[1].split(":")
-    const HH = Number(buff[1][0]) - 9
-    const mm = buff[1][1]
-    const ss = buff[1][2]
-    //console.log(yyyy, MM, dd, HH, mm, ss)    
-    //タイムゾーン変更 VSCode上で実行するときはタイムゾーンを変える必要が出てくる。。。UTCで比較するように縛るか。
-    return new Date(yyyy, MM, dd, HH, mm, ss)
-  }
-
   //●発注履歴メッセージ取得
-  getAllOrderRecords(){
+  async getAllOrderRecords(){
     let messagesArray = [], columns1 = [], columns2 = [], columns3 = []
     let card
     const maxRecord = 30
@@ -207,38 +194,25 @@ class OrderRecords{
       messagesArray.push(new StampMessage().何卒)
     }
     else{
+      //最大表実数を制限
       if(this.recordNum > maxRecord){this.recordNum = maxRecord}
 
       //発注履歴カルーセル作成
       let pNum
       for(pNum = 0; pNum < this.recordNum; pNum++){
-        card = this.getOrderRecordCard(this.allUserOrderData[pNum]._rawData)
+        card = this.getOrderRecordCard(this.sheetDataOfTheUser[pNum]._rawData)
 
         //columnsに情報を格納する
-        if(pNum <= 10){
-          //1商品情報に基づき、Line Message APIのFMTに従い1JSON作成
-          columns1.push(card);
-        }
-        else if(pNum <= 20){
-          columns2.push(card);
-        }            
-        else{
-          columns3.push(card);
-        }            
+        if(pNum <= 10){ columns1.push(card) }
+        else if(pNum <= 20){ columns2.push(card) }            
+        else{ columns3.push(card) }            
       }
 
-      //メッセージ格納
-      //メッセージ1
-      messagesArray.push(message_JSON.getflexCarouselMessage("発注履歴part1",columns1))
-      
-      //メッセージ2
-      if(pNum > 10){messagesArray.push(message_JSON.getflexCarouselMessage("発注履歴part2",columns2))}
-
-      //メッセージ3
-      if(pNum > 20){messagesArray.push(message_JSON.getflexCarouselMessage("発注履歴part3",columns3))}
-      
-      //メッセージ4
-      messagesArray.push(message_JSON.getTextMessage("買参人番号" + this.MARKET_ID + "-" + this.BRANCH_NUM + "様\n過去30日の発注履歴を上に表示しました。"))
+      //メッセージ格納      
+      messagesArray.push(message_JSON.getflexCarouselMessage("発注履歴part1",columns1))//メッセージ1
+      if(pNum > 10){messagesArray.push(message_JSON.getflexCarouselMessage("発注履歴part2",columns2))}//メッセージ2      
+      if(pNum > 20){messagesArray.push(message_JSON.getflexCarouselMessage("発注履歴part3",columns3))}//メッセージ3
+      messagesArray.push(message_JSON.getTextMessage("買参人番号" + this.user.property.MARKET_ID + "-" + this.user.property.BRANCH_NUM + "様\n過去30日の発注履歴を上に表示しました。"))//メッセージ4
     }
     return messagesArray
   }
@@ -251,19 +225,14 @@ class OrderRecords{
     const producerInfo = array[this.columns.pnumA] + "-" + array[this.columns.pnumB] + " " + array[this.columns.producerName]
     const stateOrderNum    = "希望口数：" + array[this.columns.orderNum]
     const stateDeliveryday = "希望市場納品日：" + array[this.columns.deliveryday] //'yy/mm/dd(day)
-    console.log(`${orderDate}`)
+    
     /* デバック
-      
-      console.log(`${array[this.columns.prductName]}`)    
-      console.log(`${norm}`)
-      console.log(`${producerInfo}`)
-      console.log(`${stateOrderNum}`)
-      console.log(`${stateDeliveryday}`)
+    console.log(`${norm}`)
+    console.log(`${producerInfo}`)
+    console.log(`${stateOrderNum}`)
+    console.log(`${stateDeliveryday}`)
     */
-
-    //let salesPerson = array[this.columns.salesPerson] 
-  
-    const card = {
+    return {
       "type": "bubble",
       "size": "kilo",
       "body": {
@@ -345,25 +314,23 @@ class OrderRecords{
           "backgroundColor": "#fddea5"
         },
       }
-    }         
-    return card
+    }
   }
 
   //●発注履歴の照合
-  certificateOrderRecord(masterProductArray, deliveryday, wantCell){
+  //masterProductArray: []
+  //deliveryday: YYYY-MM-DD
+  async certificateOrderRecord(masterProductArray, deliveryday, wantCell){
     //発注履歴比較用 新規発注データ
-    let newOrder = this.getNewOrderForcheck(masterProductArray, deliveryday)
-
-    //発注履歴比較用 過去発注全データ
-    let ordersArrayForcheck = this.getOrdersArrayForcheck();
-
-    console.log(`今回の発注 ${newOrder}`)
-    let buff
-    for (buff of ordersArrayForcheck){//セルの数
-      console.log(`発注の履歴 ${buff}`)
-
-      if(newOrder == buff){
-        if(wantCell == true){
+    const newOrder = this.getNewOrderForcheck(masterProductArray, deliveryday)
+    
+    //発注履歴比較用 過去発注全データ    
+    const ordersArrayForcheck = this.getOrdersArrayForcheck();    
+    for (let buff of ordersArrayForcheck){      
+      if(newOrder === buff){
+        console.log(`今回の発注 ${newOrder}`)
+        console.log(`発注の履歴 ${buff}`)
+        if(wantCell){
           return buff;  //useridが等しく、かつ発注しようとしている情報と同じ発注履歴を返す。
         }
         else{
@@ -377,9 +344,9 @@ class OrderRecords{
 
   //発注履歴照合用文字列を全取得
   //新規発注情報が 発注済みでないか比較するため
-  getOrdersArrayForcheck(){
+  getOrdersArrayForcheck(){    
     let orderRecordsArray = [], buff;
-    for (buff of this.allUserOrderData){
+    for (buff of this.sheetDataOfTheUser){
       orderRecordsArray.push(this.getOrderForcheck(buff._rawData));
     }
     return orderRecordsArray
@@ -399,8 +366,9 @@ class OrderRecords{
   }
 
   //発注ダブりチェック用文字列 商品リスト商品情報
+  //deliveryday: YYYY-MM-DD
   getNewOrderForcheck(masterProductArray, deliveryday){
-    return  timeMethod.getDisplayFmtDate(deliveryday) + masterProductArray[property.constPL.columns.numA] + masterProductArray[property.constPL.columns.numB] +
+    return  timeMethod.getDateFmt(deliveryday, "orderList_deliveryday") + masterProductArray[property.constPL.columns.numA] + masterProductArray[property.constPL.columns.numB] +
       masterProductArray[property.constPL.columns.name] +
       masterProductArray[property.constPL.columns.size] +
       masterProductArray[property.constPL.columns.sizeUnit] +
@@ -412,15 +380,15 @@ class OrderRecords{
   
   //●新規発注
   //1商品 新規発注情報配列作成
-  getOrderArray(TIMESTAMP, sheetId, masterProductArray, orderNum, deliveryday){
+  getOrderArray(TIMESTAMP, postBackData, masterProductArray, desiredDeliveryday){
     //新規発注情報
     // 発注日時	"希望市場納品日"	"買参人親番号"	"買参人枝番号"	買参人名
     //"JANコード（将来用）"	商品ID	"産地担当"	"出荷者親番号"	"出荷者枝番号"	出荷者名	"商品マスタコード"	商品名	サイズ	単位	入数 "希望口数"	"仕入単価"	"販売単価"  
-    const ORDER_TIME = timeMethod.getOrderdayDisplayFmtDate(TIMESTAMP)
+    const ORDER_TIME = timeMethod.getDateFmt(TIMESTAMP, "orderList_orderDay")
     return [
-      ORDER_TIME, deliveryday, this.MARKET_ID, this.BRANCH_NUM, this.user.property.BUYER_NAME,
+      ORDER_TIME, desiredDeliveryday, this.user.property.MARKET_ID, this.user.property.BRANCH_NUM, this.user.property.BUYER_NAME,
       "",//JANコード 予定
-      `${this.sheetNumber[sheetId]}-${masterProductArray[property.constPL.columns.productId]}`,
+      `${this.sheetNumber[postBackData.product.sheetId]}-${masterProductArray[property.constPL.columns.productId]}`,
       masterProductArray[property.constPL.columns.salesStaffName],
       masterProductArray[property.constPL.columns.numA],
       masterProductArray[property.constPL.columns.numB],
@@ -430,7 +398,7 @@ class OrderRecords{
       masterProductArray[property.constPL.columns.size],
       masterProductArray[property.constPL.columns.sizeUnit],
       masterProductArray[property.constPL.columns.quantityPerCase],
-      orderNum,      
+      postBackData.product.orderNum,      
       masterProductArray[property.constPL.columns.purchasePrice],
       masterProductArray[property.constPL.columns.sellingPrice],
     ]
@@ -512,12 +480,12 @@ class OrderRecords{
 
     //}
 
-    //console.log(this.allOrderData[0]._rawData)
+    //console.log(this.sheetData[0]._rawData)
     
     //値を入力 保存
     for(let i = 0; i < ordersArray.length; i++){
-      this.allOrderData[i]._rawData = await ordersArray[i]
-      this.allOrderData[i].save({raw : false})
+      this.sheetData[i]._rawData = ordersArray[i]
+      await this.sheetData[i].save({raw : false})
     }    
 
     //行幅調整
@@ -527,6 +495,10 @@ class OrderRecords{
     //this.eRow = this.sheet.getLastRow()
     //this.rowNum = this.eRow - this.sRow + 1
     //this.sheet.getRange(this.sRow, this.sColumn, this.rowNum, this.eColumn).sort([{column: this.columns.orderday, ascending: false}]);
+    
+    
+    //スプレッドシート キャッシュの更新
+    //await SpreadSheet_API.updateSpreadSheet(SpreadSheet_API.dbSS_OrderList)
   }
 }
 module.exports = OrderRecords

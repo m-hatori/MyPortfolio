@@ -4,92 +4,83 @@
 module.exports.newItemIcon = "https://drive.google.com/uc?id=13uBfNTFoLoZ-jlhYxpoQ0XC1r6pNrpLq"
 
 //●●●グローバル定数●●●
-  //●DB スプレッドシート関連定数、または変数。変数はスプレッドシートから登録、もしくは本GASから読み取りに行く。
-
-  /*
-  //TEST SPREADSHEETIDSの共通定数化 うまくいっていない
-  module.exports.SPREADSHEETIDS = (async function(){
-    return await other_api.getDocFmDB("spreadSheet")
-  }())
-  */
-
-  //商品リスト一覧 マトリクス
-  module.exports.constallList = {
-      //属性と列番号"商品リスト"	画像	掲載	"文字数確認"
-      "columns":{"number":0,"group":1,"upState":2,"title":3,"detail":4,"upDate":5
-  ,"sheetId":6,"picFolferID":7,"sheetLink":8,"picFilderLink":9},
-
-      //列数
-      "colNum":13,
-
-      //データ範囲
-      //エッジの行
-      "sRow":2, //始端行
-      "eRow":19, //終端行
-
-      //エッジの列
-      "sColumn":0,
-      "eColumn":9,
-
-      //行数
-      "rowNum":18,
-  }
-
-  //SS「商品リスト」クラス定数
-  //SSPL 商品リスト
-  module.exports.constPL = {
-
-    //属性と列番号
-    "columns" : {"productId":0,"numA":1,"numB":2,"producerName":3,"shortestDeliveryDate":4,"salesStaffName":5
-    ,"productCode":6,"name":7,"size":8,"sizeUnit":9,"quantityPerCase":10
-    ,"purchasePrice":11,"sellingPrice":12,"stock":13,"stockNow":14,"sDeliveryday":15
-    ,"eDeliveryday":16,"picUrl":17,"upState":18
-    ,"upDate":19,"norm":20,"deliveryPeriod":21, "botMessage":22,"judgeNew":23} ,
+//商品リスト一覧 マトリクス
+module.exports.constallList = {
+    //属性と列番号"商品リスト"	画像	掲載	"文字数確認"
+    "columns":{"number":0,"group":1,"upState":2,"title":3,"detail":4,"upDate":5
+,"sheetId":6,"picFolferID":7,"sheetLink":8,"picFilderLink":9},
 
     //列数
-    "colNum" : 24,
+    "colNum":13,
 
     //データ範囲
     //エッジの行
-    "headersRow" : 2,  //2行目
-    "sRow" : 0,  //ヘッダーの次の行が0。3行目
-    "eRow" : 19, //ヘッダーの次の行が0。22行目
-    
+    "sRow":2, //始端行
+    "eRow":19, //終端行
+
     //エッジの列
-    "sColumn" : 0, 
-    "eColumn" : 23,
+    "sColumn":0,
+    "eColumn":9,
 
     //行数
-    "rowNum" : 20,
-    
-    //文字数制限
-    "strNum" : {"name":45,"size":3,"sizeUnit":10,"quantityPerCase":3
-    ,"purchasePrice":5,"sellingPrice":5,"stock":3,"stockNow":3,"botMessage":25} 
-  }
+    "rowNum":18,
+}
 
-  //SSPL 納品日更新パターン
-  module.exports.constDP = {
-      //属性と列番号
-      "columns":{"パターンNo":0,"発注締切日":1,"集荷日":2,"競り日":3,"翌競り日":4,"最短納品日数":5,"備考":6},
-      "colNum":7,
-      "sRow":1,
-      "sColumn":0,
-      "eColumn":6        
-  }
+//SS「商品リスト」クラス定数
+//SSPL 商品リスト
+module.exports.constPL = {
 
-  //module.exports.constDPVals = JSON.parse(prop.getProperty("constDPVals")) //GAS→firesotre
+  //属性と列番号
+  "columns" : {"productId":0,"numA":1,"numB":2,"producerName":3,"shortestDeliveryDate":4,"salesStaffName":5
+  ,"productCode":6,"name":7,"size":8,"sizeUnit":9,"quantityPerCase":10
+  ,"purchasePrice":11,"sellingPrice":12,"stock":13,"stockNow":14,"sDeliveryday":15
+  ,"eDeliveryday":16,"picUrl":17,"upState":18
+  ,"upDate":19,"norm":20,"deliveryPeriod":21, "botMessage":22,"judgeNew":23} ,
 
-  //●スプレッド ユーザーリスト シート名
-  module.exports.spSheetId2sheetNames = {"user": "ユーザーリスト","buyer":"買参人","producer":"出荷者","admin":"管理者"}
+  //列数
+  "colNum" : 24,
+
+  //データ範囲
+  //エッジの行
+  "headersRow" : 2,  //2行目
+  "sRow" : 0,  //ヘッダーの次の行が0。3行目
+  "eRow" : 19, //ヘッダーの次の行が0。22行目
   
-  //●スプレッド 発注リスト シート名
-  module.exports.spSheetId3sheetNames = {"orderList":"発注リスト","BlockDay":"ブロック日","producerList":"メーリングリスト"}
-  module.exports.userClasses ={"common":"一般","buyer":"買参人","producer":"出荷者","admin":"管理者", "block":"ブロック"}
+  //エッジの列
+  "sColumn" : 0, 
+  "eColumn" : 23,
 
-  //シート「発注リスト」クラス定数
-  module.exports.constSSOL = {
-    "sheetNames": {"orderList":"発注リスト","BlockDay":"ブロック日","mailList":"メーリングリスト"}
-  }
+  //行数
+  "rowNum" : 20,
+  
+  //文字数制限
+  "strNum" : {"name":45,"size":3,"sizeUnit":10,"quantityPerCase":3
+  ,"purchasePrice":5,"sellingPrice":5,"stock":3,"stockNow":3,"botMessage":25} 
+}
+
+//SSPL 納品日更新パターン
+module.exports.constDP = {
+    //属性と列番号
+    "columns":{"パターンNo":0,"発注締切日":1,"集荷日":2,"競り日":3,"翌競り日":4,"最短納品日数":5,"備考":6},
+    "colNum":7,
+    "sRow":1,
+    "sColumn":0,
+    "eColumn":6        
+}
+
+//module.exports.constDPVals = JSON.parse(prop.getProperty("constDPVals")) //GAS→firesotre
+
+//●スプレッド ユーザーリスト シート名
+module.exports.spSheetId2sheetNames = {"user": "ユーザーリスト","buyer":"買参人","producer":"出荷者","admin":"管理者"}
+
+//●スプレッド 発注リスト シート名
+module.exports.spSheetId3sheetNames = {"orderList":"発注リスト","BlockDay":"ブロック日","producerList":"メーリングリスト"}
+module.exports.userClasses ={"common":"一般","buyer":"買参人","producer":"出荷者","admin":"管理者", "block":"ブロック"}
+
+//シート「発注リスト」クラス定数
+module.exports.constSSOL = {
+  "sheetNames": {"orderList":"発注リスト","BlockDay":"ブロック日","mailList":"メーリングリスト"}
+}
 
 /*
 //●●●RichMenu IDs 公式用●●●

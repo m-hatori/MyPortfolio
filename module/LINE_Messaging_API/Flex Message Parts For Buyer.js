@@ -1,11 +1,10 @@
 /* eslint-disable one-var */
-
 const property = require("../property.js");
 const action_JSON = require("./Action_JSON.js");
-
+const timeMethod = require("../getTime.js");
 
 //●商品カード ボタンあり
-module.exports.getProductCardForBuyer  = function(bodyContents, footerContents){
+module.exports.getProductCardForBuyer  = (bodyContents, footerContents) => {
   return {
     "type": "bubble",
     "size": "kilo",
@@ -175,8 +174,8 @@ module.exports.getProductCardForBuyer  = function(bodyContents, footerContents){
 
 //●商品カード 単品注文  発注確定/追加発注確定 キャンセルボタン
 //●商品カード 複数注文  発注確定/追加発注確定 買い物かごリセットボタン
-module.exports.getCardOrderCertification = function(explainText, label1, postodata1, label2, postdata2){
-  let footerContents =  [
+module.exports.getCardOrderCertification = (explainText, label1, postodata1, label2, postdata2) => {
+  const footerContents =  [
     {
       "type": "box",
       "layout": "vertical",
@@ -250,7 +249,7 @@ module.exports.getCardOrderCertification = function(explainText, label1, postoda
       "justifyContent": "center",
     }
   ];
-         
+  //console.log(`発注確認カード フッター${JSON.stringify(footerContents)}`)
   return {
     "type": "bubble",
     "size": "kilo",    
@@ -291,7 +290,7 @@ module.exports.getCardOrderCertification = function(explainText, label1, postoda
 
 //●商品カード 単品/複数注文  キャンセルボタン
 //●商品カード 単品/複数注文  買い物かごリセットボタン
-module.exports.getCardOnlyNegativeBottun = function(explainText, label1, postodata1){
+module.exports.getCardOnlyNegativeBottun = (explainText, label1, postodata1) => {
   let footerContents =  [
     {
       "type": "box",
@@ -368,10 +367,9 @@ module.exports.getCardOnlyNegativeBottun = function(explainText, label1, postoda
   }
 }
 
-
 //●商品カード 部品
 //body 単品/複数注文 商品カード上部  ラベル
-module.exports.getCardlabel = function(imageContents, label){
+module.exports.getCardlabel = (imageContents, label) => {
   imageContents.push(
     {
       "type": "box",
@@ -394,7 +392,7 @@ module.exports.getCardlabel = function(imageContents, label){
 }
 
 //body 商品情報1  商品画像、残口、newアイコン
-module.exports.getCardbodyProductInfo1 = function(picUrl, imageContents){
+module.exports.getCardbodyProductInfo1 = (picUrl, imageContents) => {
   return {
     "type": "box",
     "layout": "vertical",
@@ -434,7 +432,7 @@ module.exports.getCardbodyProductInfo1 = function(picUrl, imageContents){
 }
 
 //body 商品情報1 画像URL
-module.exports.getCardPicURL = function(picUrl){
+module.exports.getCardPicURL = (picUrl) => {
   if(picUrl == "" || picUrl === undefined || picUrl === null){
     picUrl = "https://drive.google.com/uc?id=1YyBSNal0e0abFwnXaLScToXoJHZeLwks" //No image
   } 
@@ -442,7 +440,7 @@ module.exports.getCardPicURL = function(picUrl){
 }
 
 //body 商品情報1 NEWアイコン
-module.exports.getCardbodyNewIcon = function(imageContents, judgeNew){
+module.exports.getCardbodyNewIcon = (imageContents, judgeNew) => {
   if(judgeNew){
     imageContents.push(
       {
@@ -464,15 +462,15 @@ module.exports.getCardbodyNewIcon = function(imageContents, judgeNew){
 }
 
 //body 商品情報1 残口
-module.exports.getCardbodyStockNow = function(imageContents, stockNow){
-    imageContents.push(
+module.exports.getCardbodyStockNow = function(imageContents, displaytext){
+  imageContents.push(
     {
       "type": "box",
       "layout": "baseline",
       "contents": [
         {
           "type": "text",
-          "text": stockNow,
+          "text": displaytext,
           "size": "sm",
           "align": "center"
         }
@@ -485,39 +483,38 @@ module.exports.getCardbodyStockNow = function(imageContents, stockNow){
       "offsetTop": "90%",
       "offsetStart": "70%"
     }
-  )   
-
+  )
   return imageContents
 }
 
 //body 複数注文 商品情報2  商品名 規格 出荷者 市場納品期間
-module.exports.getCardbodyProductInfo2 = function(postBackData, deliveryPeriod){
-  return {
+module.exports.getCardbodyProductInfo2 = (masterProductArray) => {
+  const json = {
     "type": "box",
     "layout": "vertical",
     "contents": [
       {
         "type": "text",
-        "text": postBackData.product.name,
+        "text": masterProductArray[property.constPL.columns.name],
         "size": "md",
         "weight": "bold",
         "wrap": true
       },
       {
         "type": "text",
-        "text": postBackData.product.norm,
+        "text": masterProductArray[property.constPL.columns.norm],
         "size": "md",
         "wrap": true
       },
       {
         "type": "text",
-        "text": postBackData.product.producer,
+        "text": masterProductArray[property.constPL.columns.numA] + "-" + masterProductArray[property.constPL.columns.numB] + " " +  masterProductArray[property.constPL.columns.producerName],
         "size": "md",
         "adjustMode": "shrink-to-fit"
       },        
       {
         "type": "text",
-        "text": deliveryPeriod,
+        "text": masterProductArray[property.constPL.columns.deliveryPeriod],
         "size": "md"
       },
     ],
@@ -525,6 +522,8 @@ module.exports.getCardbodyProductInfo2 = function(postBackData, deliveryPeriod){
     "paddingStart": "xl",
     "paddingEnd": "xl"        
   }
+  //console.log(json)
+  return json
 }
 
 //body 発注情報
@@ -631,7 +630,10 @@ module.exports.getCardfooterBottunWidth = function(label, textMessage, postBackD
 }
 
 //fotter 納品日ボタン
-module.exports.getCardfooterDeliverydayBottun = function(label, postBackData, sD, eD){
+module.exports.getCardfooterDeliverydayBottun = function(label, postBackData, masterProductArray){
+  const SD_FMT_LINE = timeMethod.getDateFmt(masterProductArray[property.constPL.columns.sDeliveryday]._seconds*1000, "LINE_SYS")
+  const ED_FMT_LINE = timeMethod.getDateFmt(masterProductArray[property.constPL.columns.eDeliveryday]._seconds*1000, "LINE_SYS")
+  //console.log(`納品日ボタン 納品開始日: ${SD_FMT_LINE} 納品終了日: ${ED_FMT_LINE}`)
   return {
     "type": "box",
     "layout": "vertical",
@@ -640,7 +642,7 @@ module.exports.getCardfooterDeliverydayBottun = function(label, postBackData, sD
         "type": "button",
         "style": "primary",
         "height": "sm",
-        "action": action_JSON.getdateAction(label, postBackData, sD, eD),
+        "action": action_JSON.getdateAction(label, postBackData, SD_FMT_LINE, ED_FMT_LINE),
         "color": "#905c44",
       }
     ],

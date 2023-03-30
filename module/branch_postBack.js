@@ -1,4 +1,6 @@
 /* eslint-disable one-var */
+const timeMethod = require("./getTime.js");
+
 const Products = require("./class ProductsList.js");
 const OrderRecords = require("./class OrdersList.js");
 
@@ -24,12 +26,13 @@ const checkTimeStamp = async (TIMESTAMP, TIMESTAMP_NEW, TAG, user) =>{
   //console.log(`差 : ${dt}m秒  タイムリミット：${TIMELIMIT_STATE}`)
 
   //受注締切日時
-  const DEADLINE = new Date()  
+  const DEADLINE = new Date()
   DEADLINE.setHours(4); //時刻を UTC 13:00:00 に設定 13-9 = 4
   DEADLINE.setMinutes(0);
   DEADLINE.setSeconds(0);
   const UNIXTIME_DEADLINE = DEADLINE.getTime()
-  
+  //console.log(`受注締切日時: ${DEADLINE}`)
+
   let timeStampState, textMessage, timeError = true
   if(dt > timelimit){
     timeStampState = "タイムアウト"
@@ -54,12 +57,13 @@ const checkTimeStamp = async (TIMESTAMP, TIMESTAMP_NEW, TAG, user) =>{
       //商品有無確認
       messagesArray = await Cart.getCarouselMessage(user, TIMESTAMP_NEW, true, 2)
       textMessage += "\n\n上の再表示した買い物かご情報より、再度手続きをお願いいたします。"
-      messagesArray.push(message_JSON.getTextMessage(textMessage))    
+      messagesArray.push(message_JSON.getTextMessage(textMessage))
+      user.setRichMenu()
     }
     else{
       //商品リストの一覧表示
       timeStampState += "商品リスト一覧表示"
-      const products = new Products(user.SECRETS.spSheetId1)
+      const products = new Products()
       messagesArray = await products.getUpStateAllList(TIMESTAMP_NEW)
       textMessage += "\n\n上の再表示した商品リストより、再度手続きをお願いいたします。"
       messagesArray.push(message_JSON.getTextMessage(textMessage))
@@ -67,7 +71,7 @@ const checkTimeStamp = async (TIMESTAMP, TIMESTAMP_NEW, TAG, user) =>{
   }
   console.log(`タイムスタンプ確認: ${timeStampState}`)
   return [timeError, messagesArray]
-}                            
+}
 
 //ポストバック処理分岐
 module.exports.process = async (event, TIMESTAMP_NEW, postBackData, user) => {
@@ -115,9 +119,7 @@ module.exports.process = async (event, TIMESTAMP_NEW, postBackData, user) => {
     //1商品リストの商品一覧表示
     if(TAG == "productsList"){
       //productsList--TIMESTAMP/シートID/orderbutton:発注ボタンありorなし/state：掲載中or確認中
-      
-      const products = new Products(user.SECRETS.spSheetId1, postBackData.product.sheetId)
-      messagesArray = await products.getAllproductInfo(postBackData.product.ORERBUTTON_STATE, postBackData.product.OPTION_UPSTATE, TIMESTAMP_NEW)
+      messagesArray = await new Products(postBackData.product.sheetId).getAllproductInfo(postBackData.product.ORERBUTTON_STATE, postBackData.product.OPTION_UPSTATE, TIMESTAMP_NEW)
     }
     
     //複数発注処理（買い物かご）
@@ -127,13 +129,16 @@ module.exports.process = async (event, TIMESTAMP_NEW, postBackData, user) => {
       //0 買い物かご 商品追加
       if(COMMAND == "add"){
         console.log(`${CONSOLE_STATE}: 商品追加`)
+        //console.log(`買い物かご追加前: ${JSON.stringify(user.property.CART)}`)
+
         if(user.property.CART.length < 10){
           //商品情報追加 配列末尾に
-          user.property.CART.push(postBackData.product).then(()=>{
-            user.update_CartInfo()//買い物かご更新
-          })
-
-          messagesArray.push(message_JSON.getTextMessage("追加しました。"))
+          user.property.CART.push(postBackData.product)
+          
+          //買い物かご更新
+          await user.updateDB()
+          //console.log(`買い物かご追加後: ${JSON.stringify(user.property.CART)}`)
+          //messagesArray.push(message_JSON.getTextMessage("追加しました。"))
           return messagesArray
         }
         else{
@@ -154,12 +159,10 @@ module.exports.process = async (event, TIMESTAMP_NEW, postBackData, user) => {
         //STATE_CHECK_DELIVERYDAY 納品期間チェック: 2
         messagesArray = await Cart.getCarouselMessage(user, TIMESTAMP_NEW, true, 2)
 
-        const textMessage = "買い物かご情報を上に表示しました。\n" +
-        "買い物かご追加直後の商品は、希望口数は1、希望市場納品日は最短納品可能日が指定されています。\n\n" +
-        "「口数」、「納品日」ボタンを押すと、それぞれ変更できます。\n\n" +
-        "「削除」ボタンを押すと、買い物かごから削除できます。\n\n" +
-        "操作が反映されていないときは、再度買い物かごボタンを押してください。"
-        messagesArray.push(message_JSON.getTextMessage(textMessage))        
+        const textMessage = "最初は、希望口数は1、希望市場納品日は最短納品可能日が指定されています。\n\n「口数」、「納品日」ボタンを押すと、それぞれ変更できます。"
+        //+ "「削除」ボタンを押すと、買い物かごから削除できます。\n\n"
+        messagesArray.push(message_JSON.getTextMessage(textMessage))
+        user.setRichMenu()
         return messagesArray
       }
       //買い物かご 全商品削除
@@ -170,7 +173,7 @@ module.exports.process = async (event, TIMESTAMP_NEW, postBackData, user) => {
         user.property.CART = []
 
         //買い物かご更新
-        user.update_CartInfo()//DB更新
+        await user.updateDB()
         
         //テキストメッセージ返信
         messagesArray.push(message_JSON.getTextMessage("買い物かごを空にしました。"))
@@ -193,7 +196,6 @@ module.exports.process = async (event, TIMESTAMP_NEW, postBackData, user) => {
 
     
       //買い物かご内 商品情報 有無確認
-      //TODO:動作を重くしている。許容するか
       const CARTINFOARRAY_INDEX = await (async () => {
         let index, BUFF_TEXT, state = "-買い物かご内 商品情報 なし"
         for(index in user.property.CART){
@@ -221,7 +223,7 @@ module.exports.process = async (event, TIMESTAMP_NEW, postBackData, user) => {
       //2 希望口数伺い クイックリプライメッセージ
       else if(COMMAND == "selectOrderNum"){
         console.log(`${CONSOLE_STATE}: 希望口数伺い`)
-        messagesArray = await Order.selectOrderNum(postBackData)
+        messagesArray = Order.selectOrderNum(postBackData)
       }
       //3 希望口数指定 買い物かごに反映
       else if(COMMAND == "setOrderNum"){
@@ -241,44 +243,64 @@ module.exports.process = async (event, TIMESTAMP_NEW, postBackData, user) => {
         messagesArray.unshift(message_JSON.getTextMessage("No." + (Number(CARTINFOARRAY_INDEX) + 1) + "の口数を変更しました。"))
         
         //買い物かご更新
-        user.update_CartInfo()
+        await user.updateDB()
       }
       //4 納品日指定 買い物かご情報に希望市場納品日を追記。メニューに切り替え。
       else if(COMMAND == "setDeliveryday"){
         console.log(`${CONSOLE_STATE}: 納品日指定`)
+        postBackData.product.deliveryday = Order.getUnixTimeFMDeliveryday(event.postback.params.date)
         postBackData.product.orderState = 0 //発注状況 リセット
 
-        //納品日更新 DB書き換え
         //荷受け日、ブロック日確認
-        const stateDeliveryday = Order.certificationDeliveryday(event.postback.params.date)//[newDeliveryday, changeStateDeliveryday]
-        postBackData.product.deliveryday = stateDeliveryday[0]
+        const [newDeliveryday, changeStateDeliveryday] = timeMethod.checkDeliveryday(postBackData.product.deliveryday)
+        postBackData.product.deliveryday = newDeliveryday
+
+        //納品日更新 DB書き換え
         user.property.CART[CARTINFOARRAY_INDEX] = postBackData.product
 
         //買い物かご カルーセルメッセージ送信
         //STATE_NEWORDER 新規発注確認: true
-        //STATE_CHECK_DELIVERYDAY 荷受け日・ブロック日チェック: 1
+        //STATE_CHECK_DELIVERYDAY 納品日がテキストでなく、納品日チェックが不要        
         messagesArray = await Cart.getCarouselMessage(user, TIMESTAMP_NEW, true, 0)
-        messagesArray.unshift(message_JSON.getTextMessage("No." + (Number(CARTINFOARRAY_INDEX) + 1) + "の納品日を変更しました。"))
 
         //買い物かご更新
-        user.update_CartInfo()
+        let textMessage_changeDeliveryday = "No." + (Number(CARTINFOARRAY_INDEX) + 1)
+        if(changeStateDeliveryday){
+          await user.updateDB()
+          textMessage_changeDeliveryday += "指定日の翌競り日に変更しました"
+          messagesArray.push(message_JSON.getTextMessage(textMessage_changeDeliveryday))
+        }
+        else{
+          textMessage_changeDeliveryday += "の納品日を変更しました。"
+          messagesArray.unshift(message_JSON.getTextMessage(textMessage_changeDeliveryday))
+        }        
       }
       //5 買い物かご商品 1商品削除
       else if(COMMAND == "delete"){
         console.log(`${CONSOLE_STATE}: 1商品削除`)
+        
         //削除
         user.property.CART.splice(CARTINFOARRAY_INDEX, 1)
-
-        //買い物かご更新
-        await user.update_CartInfo()//DB更新
 
         //テキストメッセージ返信
         //STATE_NEWORDER 新規発注確認: true、追加発注確認: false
         //STATE_CHECK_DELIVERYDAY 納品日チェック不要:0
         if(user.property.CART.length > 0){
+          //発注状況 リセット
+          for(let i in user.property.CART){
+            user.property.CART[i].orderState = 0
+          }
+
+          //DB更新
+          await user.updateDB()
           messagesArray = await Cart.getCarouselMessage(user, TIMESTAMP_NEW, true, 0)
+          messagesArray.unshift(message_JSON.getTextMessage("削除しました。"))
         }
-        messagesArray.unshift(message_JSON.getTextMessage("削除しました。"))
+        else{
+          //DB更新
+          await user.updateDB()
+          messagesArray = Irregular.whenZeroProductInCart()
+        }        
       }
     }
     
@@ -289,46 +311,40 @@ module.exports.process = async (event, TIMESTAMP_NEW, postBackData, user) => {
       //0 発注内容確認 発注ボタン押下後、口数1~10ボタン押下後
       if(COMMAND == "check"){
         console.log(`${CONSOLE_STATE}: 発注内容確認`)
-
-        //単品発注内容をDBに格納
-        const {plSheet, masterProductArray} = Order.getProductsInfo(user, postBackData)
-        postBackData.product[""] = 
-        user.property.insta.push(postBackData.product).then(()=>{
-          user.update_CartInfo()//買い物かご更新
-        })
-
-
-        //納品日チェック STATE_CHECK_DELIVERYDAY  テキスト、納品期間チェック不要:0
-        //STATE_CHECK_DELIVERYDAY 納品日チェック不要:0  最短納品日が格納されるため
-        messagesArray = await OneOrder.getCarouselMessage(user, postBackData)
+        //STATE_NEWORDER|商品情報をplSheet, masterProductArrayから取得: true
+        //STATE_CHECK_DELIVERYDAY|荷受け日、ブロック日チェック 不要: false  最短納品日が格納されるため
+        messagesArray = await OneOrder.getCarouselMessage(postBackData, true, false)
       }
       //1 希望口数伺い クイックリプライメッセージ
       else if(COMMAND == "selectOrderNum"){
         console.log(`${CONSOLE_STATE}: 希望口数伺い`)
-        messagesArray = await Order.selectOrderNum(postBackData)
+        messagesArray = Order.selectOrderNum(postBackData)        
       }
       //2 希望口数指定 postBackDataに反映
       else if(COMMAND == "setOrderNum"){
         console.log(`${CONSOLE_STATE}: 希望口数指定`)
         //postBackData書き換え
         postBackData.product.orderNum = postBackData.newOrderNum
-        postBackData.product.orderState = 2
-                
-        //納品日チェック STATE_CHECK_DELIVERYDAY  テキスト、納品期間チェック不要:0
+        console.log(`after setOrderNum :${postBackData.product.orderNum}`)
+        postBackData.product.orderState = 2                
+        
         //CHANGE_STATE 口数変更: 1
-        messagesArray = await OneOrder.getCarouselMessage(user, postBackData, 0)
+        //STATE_NEWORDER|商品情報をDBから取得: false
+        //STATE_CHECK_DELIVERYDAY|荷受け日、ブロック日チェック 不要: false
+        messagesArray = await OneOrder.getCarouselMessage(postBackData, false, false)
         messagesArray.unshift(message_JSON.getTextMessage("口数を変更しました。"))
       }
       //3 希望納品日指定
       else if(COMMAND == "setDeliveryday"){
         console.log(`${CONSOLE_STATE}: 希望納品日指定`)
         //postBackData書き換え
-        postBackData.product.deliveryday = event.postback.params.date  //yyyy-mm-dd
+        postBackData.product.deliveryday = Order.getUnixTimeFMDeliveryday(event.postback.params.date)
         postBackData.product.orderState = 2
-
-        //納品日チェック STATE_CHECK_DELIVERYDAY  荷受け日、ブロック日チェック: 1
+        
         //CHANGE_STATE 納品日変更: 2
-        messagesArray = await OneOrder.getCarouselMessage(user, postBackData, 1)
+        //STATE_NEWORDER|商品情報をDBから取得: false
+        //STATE_CHECK_DELIVERYDAY|荷受け日、ブロック日チェック 必要: true
+        messagesArray = await OneOrder.getCarouselMessage(postBackData, false, true)
         messagesArray.unshift(message_JSON.getTextMessage("納品日を変更しました。"))
       }
       //4 発注確定
@@ -340,6 +356,7 @@ module.exports.process = async (event, TIMESTAMP_NEW, postBackData, user) => {
       else if(COMMAND == "reOrderConfirm"){
         console.log(`${CONSOLE_STATE}:再発注確定`)
         messagesArray = OneOrder.orderConfirm(user, TIMESTAMP, postBackData)
+
       }
       else{
         console.log(`${CONSOLE_STATE}: 該当イベントなし`)
