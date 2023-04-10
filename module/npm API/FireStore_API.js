@@ -1,15 +1,13 @@
 /* eslint-disable node/no-missing-require */
 /* eslint-disable one-var */
-const functions = require('firebase-functions');
-const SpreadSheet_API = require("./SpreadSheet_API.js");
+//const functions = require('firebase-functions');
+//const SpreadSheet_API = require("./SpreadSheet_API.js");
 
 //Cloud Functionsで初期化
 const {initializeApp} = require('firebase-admin/app');
 const {getFirestore} = require('firebase-admin/firestore');
 initializeApp();
 const db = getFirestore();
-
-//スプレッドシートの初期化
 
 // リファレンス
 const dbCollection = db.collection("LINEBot")
@@ -29,19 +27,16 @@ module.exports.dbData = {
 // DB変更後の処理
 const handleFirestoreSnapshot = (snapshot) => { 
   console.log(`firestore update: ${snapshot.id}`);
-  module.exports.dbData[snapshot.id] = snapshot.data();  
+  module.exports.dbData[snapshot.id] = snapshot.data();
 };
 
 // クライアントサイドからのDB変更リスナー
-module.exports.dbRef.ProductsInfo.onSnapshot(async (snapshot) => {
-  handleFirestoreSnapshot(snapshot)
-  await SpreadSheet_API.initializeSpreadsheet(SpreadSheet_API.dbSS_ProductsList);
-  await SpreadSheet_API.initializeSpreadsheet(SpreadSheet_API.dbSS_OrderList);
-});
+module.exports.dbRef.ProductsInfo.onSnapshot((snapshot) => {handleFirestoreSnapshot(snapshot)});
 module.exports.dbRef.plSheet.onSnapshot((snapshot) => {handleFirestoreSnapshot(snapshot)});
 module.exports.dbRef.user_buyer.onSnapshot((snapshot) => {handleFirestoreSnapshot(snapshot)});
 
 //サーバーサイドからのDB変更リスナー
+/*
 module.exports.serverObserver = functions.firestore
 .document('{colName}/{docName}')
 .onUpdate((change, context) => {
@@ -53,6 +48,7 @@ module.exports.serverObserver = functions.firestore
   module.exports.dbData[docName] = updatedData  
   return null;
 });
+*/
 
 //DB読み込み get()
 module.exports.getDocFmDB = async (docRef) => {
@@ -99,3 +95,28 @@ module.exports.getDocFmDB = async (docName) => {
   }
 }
 */
+
+//商品リスト 一覧取得
+module.exports.getUpStateAllList = async (TIMESTAMP_NEW, DISP_STATE) => {
+  //2行まとめて表示
+  const messagesArray_text = await module.exports.dbData.ProductsInfo["upStateList1"].replace(/timeStampNew/g, TIMESTAMP_NEW)  //timeStampを入力
+  const messagesArray = JSON.parse(messagesArray_text)
+  return messagesArray
+  /*
+  //1行ずつ表示
+  let messagesArray_text
+  if(DISP_STATE){
+    messagesArray_text = module.exports.dbData.ProductsInfo["upStateList1"].replace(/timeStampNew/g, TIMESTAMP_NEW)  //timeStampを入力
+  }
+  else{
+    if(module.exports.dbData.ProductsInfo["upStateList2"] !== null){
+      messagesArray_text = module.exports.dbData.ProductsInfo["upStateList2"].replace(/timeStampNew/g, TIMESTAMP_NEW)  //timeStampを入力
+    }
+    else{
+      messagesArray_text = module.exports.dbData.ProductsInfo["upStateList1"].replace(/timeStampNew/g, TIMESTAMP_NEW)  //timeStampを入力
+    }    
+  }
+  const messagesArray = JSON.parse(messagesArray_text) //JSON形式に変換
+  return messagesArray
+  */
+}

@@ -4,6 +4,8 @@ const timeMethod = require("./getTime.js");
 const Products = require("./class ProductsList.js");
 const OrderRecords = require("./class OrdersList.js");
 
+const { getUpStateAllList } = require("./npm API/FireStore_API.js");
+
 const StampMessage = require("./LINE_Messaging_API/Class Stamp.js");
 const message_JSON = require("./LINE_Messaging_API/message_JSON.js");
 const Irregular = require("./LINE_Messaging_API/Irregular.js");
@@ -62,9 +64,8 @@ const checkTimeStamp = async (TIMESTAMP, TIMESTAMP_NEW, TAG, user) =>{
     }
     else{
       //商品リストの一覧表示
-      timeStampState += "商品リスト一覧表示"
-      const products = new Products()
-      messagesArray = await products.getUpStateAllList(TIMESTAMP_NEW)
+      timeStampState += "商品リスト一覧表示"      
+      messagesArray = await getUpStateAllList(TIMESTAMP_NEW, true)
       textMessage += "\n\n上の再表示した商品リストより、再度手続きをお願いいたします。"
       messagesArray.push(message_JSON.getTextMessage(textMessage))
     }
@@ -83,7 +84,7 @@ module.exports.process = async (event, TIMESTAMP_NEW, postBackData, user) => {
   const TAG = postBackData.tag
   const COMMAND = postBackData.command
   const TIMESTAMP = Number(postBackData.timeStamp)
-  console.log(`tag : ${TAG}, command : ${COMMAND}\n`)
+  console.log(`>>>> tag : ${TAG}, command : ${COMMAND} <<<<`)
 
   //メニュー処理
   if(TAG == "menu"){
@@ -112,13 +113,25 @@ module.exports.process = async (event, TIMESTAMP_NEW, postBackData, user) => {
     user.setRichMenu()
   }
   else{
+    /*
+    //商品リスト一覧 1行ずつ表示
+    if(TAG == "productsList"){
+      if(COMMAND == "1"){
+        messagesArray = await getUpStateAllList(TIMESTAMP_NEW, true)
+      }
+      else{
+        messagesArray = await getUpStateAllList(TIMESTAMP_NEW, false)
+      }
+      return
+    }
+    */
+
     //制限時間内の情報からのアクションか確認
     const timeState = await checkTimeStamp(TIMESTAMP, TIMESTAMP_NEW, TAG, user)
     if(timeState[0]){return timeState[1]}
     
     //1商品リストの商品一覧表示
     if(TAG == "productsList"){
-      //productsList--TIMESTAMP/シートID/orderbutton:発注ボタンありorなし/state：掲載中or確認中
       messagesArray = await new Products(postBackData.product.sheetId).getAllproductInfo(postBackData.product.ORERBUTTON_STATE, postBackData.product.OPTION_UPSTATE, TIMESTAMP_NEW)
     }
     
@@ -148,7 +161,10 @@ module.exports.process = async (event, TIMESTAMP_NEW, postBackData, user) => {
       }
 
       //買い物かご商品有無確認
-      if(user.property.CART.length <= 0){return Irregular.whenZeroProductInCart()}
+      if(user.property.CART.length <= 0){
+        user.setRichMenu()
+        return Irregular.whenZeroProductInCart()
+      }
 
       //0 買い物かご情報確認
       if(COMMAND == "check"){
@@ -311,7 +327,7 @@ module.exports.process = async (event, TIMESTAMP_NEW, postBackData, user) => {
       //0 発注内容確認 発注ボタン押下後、口数1~10ボタン押下後
       if(COMMAND == "check"){
         console.log(`${CONSOLE_STATE}: 発注内容確認`)
-        //STATE_NEWORDER|商品情報をplSheet, masterProductArrayから取得: true
+        //STATE_NEWORDER|商品情報をplSheet, productInfoArrayから取得: true
         //STATE_CHECK_DELIVERYDAY|荷受け日、ブロック日チェック 不要: false  最短納品日が格納されるため
         messagesArray = await OneOrder.getCarouselMessage(postBackData, true, false)
       }

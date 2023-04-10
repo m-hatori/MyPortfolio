@@ -4,7 +4,10 @@
 const functions = require('firebase-functions');
 require("date-utils");
 
-const Products = require("./module/class ProductsList.js");
+const { getUpStateAllList } = require("./module/npm API/FireStore_API.js");
+const SpreadSheet_API = require("./module/npm API/SpreadSheet_API.js");
+const property = require("./module/property.js");
+
 const User = require("./module/class UsersList.js");
 const branch_postBack = require("./module/branch_postBack.js");
 //const branch_text = require("./module/branch_text.js");
@@ -13,25 +16,20 @@ const SECRET = require("./module/npm API/secret.js");
 
 const message_JSON = require("./module/LINE_Messaging_API/message_JSON.js")
 
+
 //●テキストメッセージ処理分岐
 //TODO: postBackへ移行する
+const message_JSON_irregular = require("./module/LINE_Messaging_API/Irregular.js");
+const Cart = require("./module/LINE_Messaging_API/Cart.js")
 async function branchOfTextMessage(TIMESTAMP_NEW, textMessage, user){  
   let messagesArray = []
   if(textMessage == "商品情報リスト表示"){
-    const products = new Products()
-
-    //TODO: スキップ ORERBUTTON_STATE 発注可能 1 , OPTION_UPSTATE 掲載中 1 → 買参人向けは固定だから判断しなくてもいい。
-    messagesArray = await products.getUpStateAllList(TIMESTAMP_NEW)  //買参人用、掲載中, タイムスタンプ
-    
-    //if(messagesArray.length > 0){
-    //  messagesArray.push(message_JSON.getTextMessage("商品リストを上に表示しました。\n「詳細」ボタンを押すと、掲載中の商品をご確認いただけます。"))
-    //}
+    messagesArray = await getUpStateAllList(TIMESTAMP_NEW, true)  //買参人用、掲載中, タイムスタンプ
   }
-  else if(textMessage == "買い物かご確認"){
-    const Cart = require("./module/LINE_Messaging_API/Cart.js")
+  else if(textMessage == "買い物かご確認"){    
     //買い物かご内情報確認
     if(user.property.CART.length <= 0){
-      const message_JSON_irregular = require("./module/LINE_Messaging_API/Irregular.js");    
+      user.setRichMenu()
       return message_JSON_irregular.whenZeroProductInCart()
     }
 
@@ -92,9 +90,9 @@ const authSecretKey = (CHANNELSECRET, request) => {
 //Post受信
 module.exports.helloWorld =  functions
   .runWith({
-    timeoutSeconds: 10,
-    minInstances: 1, //最低 5 つのインスタンスを保温に設定 応答速度に影響 コストがかかる  
-    maxInstances: 10,
+    //timeoutSeconds: 10,
+    minInstances: 1, //インスタンスをwarmスタートに設定 応答速度に影響 コストがかかる  
+    maxInstances: 10,//同時に処理できる最大インスタンス数
     //memory: "1GB",  //呼び出し回数の無料枠を超えると、コストがかかる。メモリ容量を大きくすると、有料枠の単価が上がる。
   })
   .region("asia-northeast1")
@@ -102,17 +100,40 @@ module.exports.helloWorld =  functions
     try{
       if (request.method === "POST"){
         //リクエスト 前処理
-        const SECRETS = JSON.parse(await SECRET.getString(process.env.SECRETS_NAME, process.env.SECRETS_VERSION))
-        
-        //httpsRequest インスタンス にアクセストークン格納
-        const httpsRequest = new HttpsRequest()
-        httpsRequest.ACCESSTOKEN = SECRETS.ACCESSTOKEN
+        const events = request.body.events
+        console.log(`events count: ${events.length}`)
+
+        //GASからのスプレッドシート更新要請
+        const GASCODE = await SECRET.getString(process.env.GASCODE_NAME, process.env.GASCODE_VERSION)
+        for(let event of events){
+          if(event.code == GASCODE){
+            if(event.type == "upDateSpreadSheet"){
+              if(event.name ==  "productsList"){
+                for(let sheetId of property.productsSheetIds){
+                  await SpreadSheet_API.upDateSpreadSheet_ProductsList(sheetId)
+                }  
+                console.log(`スプレッドシート 商品リスト初期化更新完了`)
+              }
+              else if(event.name ==  "orderList"){
+                await SpreadSheet_API.upDateSpreadSheet_OrderList()
+                console.log(`スプレッドシート 発注リスト初期化更新完了`)
+              }              
+            }
+            else{
+              console.error(`不正アクセス`);
+            }
+            return
+          }
+        }
 
         //署名確認
+        const SECRETS = JSON.parse(await SECRET.getString(process.env.SECRETS_NAME, process.env.SECRETS_VERSION))
         if(authSecretKey(SECRETS.CHANNELSECRET, request)){
-          const HACKTEXT = /[`$<>*?!(){};|]/g         
-          const events = request.body.events
-          console.log(`events count: ${events.length}`)
+          //httpsRequest インスタンス にアクセストークン格納
+          const httpsRequest = new HttpsRequest()
+          httpsRequest.ACCESSTOKEN = SECRETS.ACCESSTOKEN
+          
+          const HACKTEXT = /[`$<>*?!(){};|]/g
           
           return Promise.all(events.map(async (event) => {
             //return events.map(async (event) => {
@@ -165,10 +186,11 @@ module.exports.helloWorld =  functions
             //返信
             if(messagesArray.length > 0){httpsRequest.replyMessageByAxios(event, messagesArray)}
             return
-          }))        
+          }))
         }
         else{
-          return console.error(`signature Error`);          
+          console.error(`signature Error`);
+          return
         }
         
       }

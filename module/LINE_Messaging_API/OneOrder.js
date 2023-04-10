@@ -3,7 +3,6 @@
 const property = require("../property.js");
 const timeMethod = require("../getTime.js");
 
-//const Products = require("../class ProductsList.js");
 const OrderRecords = require("../class OrdersList.js");
 
 const message_JSON = require("./message_JSON.js");
@@ -14,7 +13,7 @@ const Order = require("./Order.js");
 const StampMessage = require("./Class Stamp.js");
 
 //●単品 発注内容確認
-//STATE_NEWORDER|商品情報をplSheet, masterProductArrayから取得: true、商品情報をDBから取得: false
+//STATE_NEWORDER|商品情報をplSheet, productInfoArrayから取得: true、商品情報をDBから取得: false
 //口数チェック|不要
 //口数納品日テキストチェック 単品発注では不要。買い物かご発注では必要。
 //STATE_CHECK_DELIVERYDAY|荷受け日、ブロック日チェック 必要: true, 不要: false 
@@ -27,21 +26,13 @@ module.exports.getCarouselMessage = async (postBackData, STATE_NEWORDER = false,
   let bodyContents  = [], imageContents = [], footerContents = []
   
   //商品情報取得
-  const [plSheet, masterProductArray] = Order.getProductsInfo(postBackData)
+  const [plSheet, productInfoArray] = await Order.getProductsInfo(postBackData)
 
   //商品情報確認
   //掲載中確認 単品発注できる時点で掲載中なので不要
-  //if(STATE_NEWORDER && Order.certificationProductInfo(postBackData, masterProductArray)){
-  //  messagesArray = Irregular.whenOldProductInfo()
-  //  return messagesArray
-  //}
-  //else if(STOCKNOW <= 0){
-  //  messagesArray = Irregular.whenStockNone()
-  //  return messagesArray
-  //}
 
   //在庫不足
-  const StockNow = masterProductArray[property.constPL.columns.stockNow]
+  const StockNow = productInfoArray[property.constPL.columns.stockNow]
   if(StockNow <= 0 ){
     //●口数
     textOrderNum = "-"
@@ -53,7 +44,7 @@ module.exports.getCarouselMessage = async (postBackData, STATE_NEWORDER = false,
     imageContents = flexMessage_ForBuyer.getCardlabel(imageContents, "発注内容")  //上部ラベル
 
     bodyContents.push(flexMessage_ForBuyer.getCardbodyProductInfo1(flexMessage_ForBuyer.getCardPicURL(process.env.PICURL_SOLDOUT), imageContents))//商品情報１  上部ラベル、商品画像、残口
-    bodyContents.push(flexMessage_ForBuyer.getCardbodyProductInfo2(masterProductArray))//商品情報2   商品名～市場納品期間
+    bodyContents.push(flexMessage_ForBuyer.getCardbodyProductInfo2(productInfoArray))//商品情報2   商品名～市場納品期間
     bodyContents.push(flexMessage_ForBuyer.getCardbodyOrdderInfo(textOrderNum, textDeliveryday))  //発注情報
 
     card = flexMessage_ForBuyer.getProductCardForBuyer(bodyContents, footerContents)
@@ -86,9 +77,9 @@ module.exports.getCarouselMessage = async (postBackData, STATE_NEWORDER = false,
     //body
     imageContents = flexMessage_ForBuyer.getCardlabel(imageContents, "発注内容")  //上部ラベル  
     imageContents = flexMessage_ForBuyer.getCardbodyStockNow(imageContents, `残${StockNow}口`)  //残口
-    const picUrl = flexMessage_ForBuyer.getCardPicURL(masterProductArray[property.constPL.columns.picUrl])
+    const picUrl = flexMessage_ForBuyer.getCardPicURL(productInfoArray[property.constPL.columns.picUrl])
     bodyContents.push(flexMessage_ForBuyer.getCardbodyProductInfo1(picUrl, imageContents))//商品情報１  上部ラベル、商品画像、残口
-    bodyContents.push(flexMessage_ForBuyer.getCardbodyProductInfo2(masterProductArray))  //商品情報2   商品名～市場納品期間
+    bodyContents.push(flexMessage_ForBuyer.getCardbodyProductInfo2(productInfoArray))  //商品情報2   商品名～市場納品期間
     bodyContents.push(flexMessage_ForBuyer.getCardbodyOrdderInfo(textOrderNum, textDeliveryday))  //発注情報
     //console.log(`発注内容 body picUrl: ${picUrl} ${textOrderNum} ${textDeliveryday}`)
 
@@ -108,7 +99,7 @@ module.exports.getCarouselMessage = async (postBackData, STATE_NEWORDER = false,
     postBackData_setDeliveryday.command = "setDeliveryday"
     //console.log(`postBackData_setDeliveryday: ${JSON.stringify(postBackData_setDeliveryday)}`)
     
-    footerContents.push(flexMessage_ForBuyer.getCardfooterDeliverydayBottun("納品日", postBackData_setDeliveryday, masterProductArray))
+    footerContents.push(flexMessage_ForBuyer.getCardfooterDeliverydayBottun("納品日", postBackData_setDeliveryday, productInfoArray))
     card = flexMessage_ForBuyer.getProductCardForBuyer(bodyContents, footerContents)
     columns.push(card)
 
@@ -134,8 +125,7 @@ module.exports.getCarouselMessage = async (postBackData, STATE_NEWORDER = false,
       //荷受け日、ブロック日を翌競り日に変更
       if(CHANGE_DELIVERYDAY_STATE){
         textMessage += "市場納品日は、希望日の翌競り日に修正させていただきました。\nご了承ください。"
-      }
-      //TODO: スキップ 納品期間外
+      }      
     }
     //発注情報 確認済み 再発注の際は、事前に納品日を変更済み
     else if(postBackData.product.orderState == 1){
@@ -183,18 +173,13 @@ module.exports.orderConfirm = async (user, TIMESTAMP, postBackData) => {
   }
   
   //posaBackDataから商品リストの情報を取得
-  const [plSheet, masterProductArray] = Order.getProductsInfo(postBackData)
+  const [plSheet, productInfoArray] = await Order.getProductsInfo(postBackData)
       
   //発注不可条件: 在庫<0
   //商品情報確認 単品発注できる時点で掲載中なので不要
   //納品日確認 不要
-  const STOCKNOW = masterProductArray[property.constPL.columns.stockNow]
-  //const STOCKNOW = user.property.instantOrder.stockNow //TODO: 単品発注情報firestore移行後
+  const STOCKNOW = productInfoArray[property.constPL.columns.stockNow]  
   
-  //if(Order.certificationProductInfo(postBackData, masterProductArray)){
-  //  messagesArray = Irregular.whenOldProductInfo()
-  //  return messagesArray
-  //}
   if(STOCKNOW <= 0){
     messagesArray = Irregular.whenStockNone()
     return messagesArray
@@ -203,7 +188,7 @@ module.exports.orderConfirm = async (user, TIMESTAMP, postBackData) => {
   //●発注情報 仕分け
   //再発注伺い
   //条件: 発注情報 未確認、かつ発注履歴有、かつ各発注履歴について、発注しようとしている情報との重複がある
-  if(postBackData.product.orderState != 1 && orderRecords.recordNum > 0 && orderRecords.certificateOrderRecord(masterProductArray, postBackData.product.deliveryday, false)){
+  if(postBackData.product.orderState != 1 && orderRecords.recordNum > 0 && await orderRecords.checkNewOrderisOrdered(productInfoArray, postBackData.product.deliveryday)){
     console.log(`--再発注伺い`)
     postBackData.product.orderState = 1
     messagesArray = await module.exports.getCarouselMessage(postBackData, false, false)//?
@@ -217,7 +202,7 @@ module.exports.orderConfirm = async (user, TIMESTAMP, postBackData) => {
     const desiredDeliveryday = timeMethod.getDateFmt(postBackData.product.deliveryday, "orderList_deliveryday")
 
     //発注履歴挿入
-    orderRecords.insertOrderRecord([orderRecords.getOrderArray(TIMESTAMP, postBackData, masterProductArray, desiredDeliveryday)])
+    orderRecords.insertOrderRecord([orderRecords.getOrderArray(TIMESTAMP, postBackData, productInfoArray, desiredDeliveryday)])
 
     //在庫管理
     plSheet.setNewStock(postBackData.product.productId, postBackData.product.orderNum)

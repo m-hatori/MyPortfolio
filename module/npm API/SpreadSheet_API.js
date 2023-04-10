@@ -1,99 +1,93 @@
 //●●●スプレッドシート API●●●
 const SECRET = require("./secret.js");
 const {GoogleSpreadsheet} = require("google-spreadsheet");  
+const property = require("../property.js");
+
+
+//初期化
+const initializeSpreadsheet = async (SSID) => {
+  try{
+    const creds = JSON.parse(await SECRET.getString(process.env.SPREADSHHET_SEVICE_ACCOUNT_NAME, process.env.SPREADSHHET_SEVICE_ACCOUNT_VERSION))
+    const SpreadSheet = new GoogleSpreadsheet(SSID)
+    await SpreadSheet.useServiceAccountAuth(creds);
+    await SpreadSheet.loadInfo()
+    console.log(`${SpreadSheet.title} 初期化完了`)
+    return SpreadSheet    
+  } catch(e){
+    console.error(e)
+  }
+}
+
 
 //スプレッドシート ドキュメント instance
 module.exports.dbSS_ProductsList = {
-  doc: new GoogleSpreadsheet(process.env.SPREADSHEETID_PRODUCTS),
-  init_state: false,
+  doc: null,
+  sheet: {
+    sheetId: "obj"
+  },
+  vals: {
+    sheetId: "obj"
+  }
 }
+//dbSS_ProductsList.sheetId[]
 module.exports.dbSS_OrderList = {
-  doc:  new GoogleSpreadsheet(process.env.SPREADSHEETID_ORDER),
-  init_state: false
+  doc: null,
+  sheet: {
+    sheetId: "obj"
+  },
+  vals: {
+    sheetId: "obj"
+  },
+  rowNum: 0
 }
 
-//初期化
-let creds
-const auth  = async (document) => {
-  if(!creds){creds = JSON.parse(await SECRET.getString(process.env.SPREADSHHET_SEVICE_ACCOUNT_NAME, process.env.SPREADSHHET_SEVICE_ACCOUNT_VERSION));}
-  await document.useServiceAccountAuth(creds);    
-}
 
-module.exports.initializeSpreadsheet = async (db) => {
-  if(!db.init_state){
-    await auth(db.doc)
-    await db.doc.loadInfo()
-    db.init_state = true;
-    console.log(`初期化完了 ${db.doc.title} STATE: ${db.init_state}`)
-    return false
+//値更新
+module.exports.upDateSpreadSheet_ProductsList = async (sheetId) => {
+  try{
+    //初期化
+    if(module.exports.dbSS_ProductsList.doc === null){
+      module.exports.dbSS_ProductsList.doc = await initializeSpreadsheet(process.env.SPREADSHEETID_PRODUCTS)      
+    }
+
+    //シート取得
+    module.exports.dbSS_ProductsList.sheet[sheetId] = module.exports.dbSS_ProductsList.doc.sheetsById[sheetId]
+    //console.log(`シート: ${module.exports.dbSS_ProductsList.sheet[sheetId].title}`)
+    if(module.exports.dbSS_OrderList.sheet[0] !== undefined || module.exports.dbSS_OrderList.sheet[0] !== null){
+      //ヘッダー行読み込み
+      await module.exports.dbSS_ProductsList.sheet[sheetId].loadHeaderRow(property.constPL.headersRow);
+
+      //行読み込み
+      const range_stockNow = "O3:O22"
+      module.exports.dbSS_ProductsList.vals[sheetId] = await module.exports.dbSS_ProductsList.sheet[sheetId].loadCells(range_stockNow)
+    }
+    //console.log(`値更新取得完了`)
+  }catch(e){
+    console.error(e)
   }
-  else{
-    return true;
-  }
+  return
 }
-/*
-module.exports.initializeSpreadsheet = async (db) => {
-  if(!db.init_state){
-    console.log(`初期化STATE: ${db.init_state}`)
-    await auth(db.doc)
-    await db.doc.loadInfo()
-    db.init_state = true;
-    console.log(`初期化STATE: ${db.init_state}`)
-    return false
+module.exports.upDateSpreadSheet_OrderList = async () => {  
+  try{
+    //初期化
+    if(module.exports.dbSS_OrderList.doc === null){
+      console.log(`${module.exports.dbSS_OrderList.doc}`)
+      module.exports.dbSS_OrderList.doc = await initializeSpreadsheet(process.env.SPREADSHEETID_ORDER)
+      console.log(`${module.exports.dbSS_OrderList.doc}`)
+    }
+
+    //シート取得
+    module.exports.dbSS_OrderList.sheet[0] = module.exports.dbSS_OrderList.doc.sheetsById[0]
+    //console.log(`シート: ${module.exports.dbSS_OrderList.sheet[0].title}`)
+    if(module.exports.dbSS_OrderList.sheet[0] !== undefined || module.exports.dbSS_OrderList.sheet[0] !== null){
+      //行読み込み
+      module.exports.dbSS_OrderList.vals[0] = await module.exports.dbSS_OrderList.sheet[0].getRows()
+      
+      module.exports.dbSS_OrderList.rowNum = module.exports.dbSS_OrderList.vals[0].length
+      console.log(`--全発注件数: ${module.exports.dbSS_OrderList.rowNum}`)      
+    }
+  } catch(e){    
+    console.error(e)
   }
-  else{
-    return true;
-  }    
+  return
 }
-*/ 
-
-/*
-●流れ
-Firestore_API.js にてデプロイ後に実行 (1回のみ
-スプレッドシートドキュメント グローバル定義
-スプレッドシートドキュメント 初期化
-スプレッドシートドキュメント ロード 読み取り専用の各シートを取得できる
-
-シート操作 ProductsList, OrderListクラスでキャッシュを作成し操作する
-
-以下は必要あるか様子を見る。
-各シートの値読み込みは、セルや行を読み込んだ後に行われるため、
-おそらくスプレッドシートのプロパティ変更後や
-シートの増減後に実行すべきメソッドと思われる。
-
-シートを再ロードする
-・発注リストに新規発注情報を挿入した後
-・在庫を更新した後
-resetLocalCache()
-loadInfo()
-Aさんにて再ロード中にBさんが発注処理をした場合、
-ユニークなドキュメントがいじられてしまうが、問題ないか。
-
-
-●スプレッドシートの取得タイミング
-商品リスト
-・現在庫の更新 firestoreで現在庫は監視すればよく、値を入れ込むだけ。
-・商品リストが更新されたとき
-→ 商品リストが更新されたときのみ
-
-発注リスト
-・発注情報の閲覧 急がない
-・発注履歴の挿入 急がない
-→ 発注直後のみ
-*/
-
-  
-//スプレッドシート キャッシュの更新
-/*
-module.exports.updateSpreadSheet = async (db) =>{
-  if(await module.exports.initializeSpreadsheet(db)){
-    console.time(`スプレッドシート ${db.doc.title} キャッシュクリア`)
-    await db.doc.resetLocalCache()
-    console.timeEnd(`スプレッドシート ${db.doc.title} キャッシュクリア`)
-
-    console.time(`スプレッドシート ${db.doc.title} ロード`)
-    await db.doc.loadInfo()
-    console.timeEnd(`スプレッドシート ${db.doc.title} ロード`)
-  }
-}
-*/

@@ -1,8 +1,10 @@
 /* eslint-disable one-var */
 const property = require("../property.js");
 const timeMethod = require("../getTime.js");
-//const Products = require("../class ProductsList.js");
+
 const OrderRecords = require("../class OrdersList.js");
+
+const SpreadSheet_API = require("../npm API/SpreadSheet_API.js");
 
 const message_JSON = require("./message_JSON.js");
 const flexMessage_ForBuyer = require("./Flex Message Parts For Buyer.js");
@@ -10,58 +12,169 @@ const Order = require("./Order.js");
 const StampMessage = require("./Class Stamp.js");
 
 
+//●商品情報チェック
+//商品リストと一致するか照合
+//比較対象：商品名、出荷者、サイズ入数販売単価
+const checkProductInfo = (postBackData, productInfoArray) => {
+  //console.log(`照合 postBackData - SS情報`)
+  const mData = getTextbyMasterData(productInfoArray)
+  const pData = getTextbyPostData(postBackData)      
+  
+  //商品情報がリストと一致しないとき、または未掲載のとき
+  if(mData != pData || productInfoArray[property.constPL.columns.upState] === false){
+    console.log(`---商品リストとpostBackDataを照合 不一致,または未掲載`)
+    console.log(`----mData : ${mData}`)
+    console.log(`----pData : ${pData}`)
+    console.log(`----upState : ${productInfoArray[property.constPL.columns.upState]}`)
+    
+    return true
+  }
+  else{
+    console.log(`---商品リストとpostBackDataを照合 一致`)
+    return false
+  }
+}
+
+//●商品情報 スプレッドシート情報 照合用テキスト取得
+const getTextbyMasterData = (productInfoArray) => {
+  return productInfoArray[property.constPL.columns.numA] + "-" + productInfoArray[property.constPL.columns.numB] +
+    //productInfoArray[property.constPL.columns.name].replace(/\n/g, "") +
+    productInfoArray[property.constPL.columns.name] +
+    productInfoArray[property.constPL.columns.norm]
+}
+
+//●商品情報 postBackData 照合用テキスト取得
+const getTextbyPostData = (postBackData) => {
+  return postBackData.product.producer.split(" ")[0] +
+  postBackData.product.name + postBackData.product.norm
+}
+
+//買い物かご内に同一商品が複数あるかチェック
+const checkSameProductsInCart = (i, user, postBackData) => {
+  for (let j in user.property.CART){
+    if(i != j &&
+      user.property.CART[j].producer == postBackData.product.producer &&
+      user.property.CART[j].name == postBackData.product.name &&
+      user.property.CART[j].norm == postBackData.product.norm &&
+      user.property.CART[j].deliveryday == postBackData.product.deliveryday
+    ){
+      console.log(`---商品重複`)
+      return true
+    }
+  }
+  return false
+}
+//スプレッドシート 商品リスト 複数在庫更新
+const setNewStockToSpreadSheet = async (plSheets, orderRecords) => {
+  const ps = []
+  for(let sheetId of property.productsSheetIds){
+    if((plSheets[sheetId] !== undefined)){
+      if(JSON.stringify(plSheets[sheetId].order) != JSON.stringify([])){
+        console.log(`--シート: ${property.sheetNumber[sheetId]} 在庫更新:${JSON.stringify(plSheets[sheetId].order)}`)
+        const p = []
+        for(let buff of plSheets[sheetId].order){
+          p.push(plSheets[sheetId].plSheet.setNewStockToSpreadSheet(buff.pId, buff.newStock))
+        }
+        Promise.all(p).then(async ()=>{
+          ps.push(plSheets[sheetId].plSheet.sheet.saveUpdatedCells()); // save all updates in one call          
+        })        
+      }
+    }
+  }
+
+  Promise.all(ps).then(async ()=>{
+    console.log(`--スプレッドシート 商品リスト 在庫更新 完了`)
+  })
+}
+
+//再伺いメッセージ取得
+//TODO: スキップ 再発注伺いをするときは、追加発注ボタンを表示するが、
+//納品日がテキストのとき 追加発注ボタンを表示しない。どう仕分けるか。
+const getReOrderTextMessage = (textMessage, cartInfoArray_doubleOrder, cartInfoArray_doubleCart) => {
+  
+  //新規発注があるとき改行
+  if(textMessage != ""){
+    textMessage += "\n\n"
+  }
+  
+  //発注履歴にダブり 
+  if(cartInfoArray_doubleOrder.length != 0){
+    textMessage += "以下の商品は、同納品日に発注済みです。\n";
+    for(let buff of cartInfoArray_doubleOrder){
+      //納品日：商品名
+      textMessage += buff + "\n\n";
+    }
+  }
+
+  //買い物かご内にダブり
+  if(cartInfoArray_doubleCart.length != 0){
+    //納品日：商品名
+    if(textMessage != ""){textMessage += "\n\n"}
+    textMessage += "以下の商品は、同一商品を同納品日に重複発注しようとしています。\n";
+    for(let buff of cartInfoArray_doubleCart){
+      //納品日：商品名
+      textMessage += buff + "\n\n"
+    }
+  }
+
+  //再発注メッセージ
+  if(cartInfoArray_doubleOrder.length != 0 || cartInfoArray_doubleCart.length != 0){
+    textMessage += "問題なければ、もう一度上の発注確定ボタンを押してください。"
+  }  
+  return textMessage
+}
+
 //●複数 発注内容確認（買い物かご情報表示）
 //引数
 //STATE_NEWORDER 新規発注確認: true、追加発注確認: false
 //STATE_CHECK_DELIVERYDAY :0 納品日チェックしない、 1：荷受け日・ブロック日チェック、2：納品期間チェック
-
 //TODO: 単品用と共通部分を共有したい
 module.exports.getCarouselMessage = async (user, TIMESTAMP, STATE_NEWORDER, STATE_CHECK_DELIVERYDAY) => {
   //●前処理
-  //商品リスト情報
-  let plSheets ={}, plSheet, cartPNum, masterProductArray = null, picUrl
-
-  //メッセージ
+  //変数定義:メッセージ
   let messagesArray = []      
   let card, columns = []
-  let buff, STATE_TEXT, STATE_PRODUCTINFO, newDeliveryday, changeStateDeliveryday = false, changeCart = false, textOrderNum = "", textDeliveryday = "", textDeliverydayState = [false, "商品No."]
   let bodyContents  = [], imageContents = [], footerContents = []
-  let postBackData = {
-    timeStamp: TIMESTAMP,
-    tag: "cart",
-    product: {}
-  }
+
+  //変数定義:商品リスト情報
+  let plSheets ={}
+  let cartPNum, picUrl
+
+  //変数定義:買い物かご情報
+  let STATE_TEXT, changeCart = false, textOrderNum = "", textDeliveryday = "", textDeliverydayState = [false, "商品No."]
 
   //●メッセージ作成
   //買い物かご内 商品カード作成ループ
   console.log(`----買い物かご商品表示----` )
   for (let i in user.property.CART){
-    postBackData.product = user.property.CART[i]
-        
+    console.log(`\n買い物かご配列: ${i}`)
+    let postBackData = {
+      timeStamp: TIMESTAMP,
+      tag: "cart",
+      product: user.property.CART[i]
+    }
+  
     //変数取得
     cartPNum = Number(i) + 1
     imageContents = flexMessage_ForBuyer.getCardlabel(imageContents, `買い物かご商品No.${cartPNum} 発注内容`)  //上部ラベル
     
     //商品リストインスタンス、情報取得
-    buff = plSheets[postBackData.product.sheetId]
+    const buff = plSheets[postBackData.product.sheetId]
+    let plSheet, productInfoArray
     if(buff !== undefined){
       plSheet = buff.plSheet
-      masterProductArray = plSheet.plSheetVals[Number(postBackData.product.productId)]
+      productInfoArray = plSheet.plSheetVals[postBackData.product.productId]
     }
     else{
-      [plSheet, masterProductArray] = Order.getProductsInfo(postBackData)
-      plSheets[postBackData.product.sheetId] = {plSheet: plSheet}
-    }              
-
-    console.log(`-買い物かごNo.${cartPNum} 商品No. : ${postBackData.product.productId}`)
-    if(masterProductArray == undefined){
-      console.log(`--商品マスタ情報に問題があります。`)
-      console.log(`---シートID : ${postBackData.product.sheetId} 商品ID : ${postBackData.product.productId}  商品マスタ情報：${masterProductArray}`)
+      [plSheet, productInfoArray] = await Order.getProductsInfo(postBackData);
+      plSheets[postBackData.product.sheetId] = {
+        plSheet: plSheet
+      };
     }
 
     //商品情報確認
-    STATE_PRODUCTINFO = Order.certificationProductInfo(postBackData, masterProductArray)
-    const STOCKNOW = masterProductArray[property.constPL.columns.stockNow]
+    const STOCKNOW = productInfoArray[property.constPL.columns.stockNow]
+    const STATE_PRODUCTINFO = checkProductInfo(postBackData, productInfoArray)    
     if(STOCKNOW <= 0 || STATE_PRODUCTINFO){
       console.log(`--在庫なし。または未掲載、または商品情報不一致`)
       //●口数
@@ -122,7 +235,7 @@ module.exports.getCarouselMessage = async (user, TIMESTAMP, STATE_NEWORDER, STAT
       //} 
       //納品期間確認
       else if(STATE_CHECK_DELIVERYDAY == 2){
-        [newDeliveryday, changeStateDeliveryday] = timeMethod.checkdeliveryPeriod(postBackData.product.deliveryday, masterProductArray)
+        const [newDeliveryday, changeStateDeliveryday] = timeMethod.checkdeliveryPeriod(postBackData.product.deliveryday, productInfoArray)
          
         //変わったらpostBackData書き換え
         if(changeStateDeliveryday){
@@ -148,7 +261,7 @@ module.exports.getCarouselMessage = async (user, TIMESTAMP, STATE_NEWORDER, STAT
 
       //body
       imageContents = flexMessage_ForBuyer.getCardbodyStockNow(imageContents, `残${STOCKNOW}口`)  //残口
-      picUrl = masterProductArray[property.constPL.columns.picUrl] //商品画像
+      picUrl = productInfoArray[property.constPL.columns.picUrl] //商品画像
             
       //footer 口数、納品日ボタンを表示
       let postBackData_selectOrderNum = postBackData
@@ -157,12 +270,12 @@ module.exports.getCarouselMessage = async (user, TIMESTAMP, STATE_NEWORDER, STAT
 
       let postBackData_setDeliveryday = postBackData
       postBackData_setDeliveryday.command = "setDeliveryday"
-      footerContents.push(flexMessage_ForBuyer.getCardfooterDeliverydayBottun("納品日", postBackData_setDeliveryday, masterProductArray))
+      footerContents.push(flexMessage_ForBuyer.getCardfooterDeliverydayBottun("納品日", postBackData_setDeliveryday, productInfoArray))
     }
     
     //body 共通
     bodyContents.push(flexMessage_ForBuyer.getCardbodyProductInfo1(flexMessage_ForBuyer.getCardPicURL(picUrl), imageContents))//商品情報１  画像、残口追加
-    bodyContents.push(flexMessage_ForBuyer.getCardbodyProductInfo2(masterProductArray))//商品情報2   商品名～市場納品期間
+    bodyContents.push(flexMessage_ForBuyer.getCardbodyProductInfo2(productInfoArray))//商品情報2   商品名～市場納品期間
     bodyContents.push(flexMessage_ForBuyer.getCardbodyOrdderInfo(textOrderNum, textDeliveryday))//発注情報
 
     //footer 共通
@@ -174,7 +287,7 @@ module.exports.getCarouselMessage = async (user, TIMESTAMP, STATE_NEWORDER, STAT
     columns.push(card)
   
     //初期化
-    masterProductArray = null, textOrderNum = "", textDeliveryday = "", changeStateDeliveryday = false
+    textOrderNum = "", textDeliveryday = ""
     bodyContents  = [], imageContents = [], footerContents = []
   }
   
@@ -241,53 +354,53 @@ module.exports.orderConfirm = async (user, TIMESTAMP, reOrderConfirm_STATE) => {
   let messagesArray = []
 
   //変数定義:発注情報
-  let orderArrays = [], orderArray = [], newStock
-  let textProdcut, textProdcutsOrderConfirm = ""
-  let cartInfoArray_OrderPattern = [], cartInfoArray_doubleOrder = [], cartInfoArray_doubleCart = []
-
-  //変数定義:買い物かご情報
-  let postBackData = {}
-
-  //変数定義:商品リスト情報
-  let plSheets ={}, plSheet, sheetId = "", masterProductArray = null, upState = false, STOCKNOW = 0
-  let STATE_PRODUCTINFO
-
+  const orderArrays = []
+  let textProdcutsOrderConfirm = ""
+  const cartInfoArray_OrderPattern = [], cartInfoArray_doubleOrder = [], cartInfoArray_doubleCart = []
+  
   //発注履歴取得
   const orderRecords = new OrderRecords(user)
   await orderRecords.getUserOrderData()
   
-  //買い物かご情報 仕分け
+  //変数定義:商品リスト情報
+  const plSheets = {}
+
+  //●買い物かご情報 仕分け
   for (let i in user.property.CART){
-    console.log(`\n買い物かご配列: ${i}`)
-    //買い物かご 1商品情報posaBackData 抽出
-    postBackData.product = user.property.CART[i]
+    
+    //買い物かご 1商品情報抽出
+    let postBackData = {
+      timeStamp: TIMESTAMP,
+      tag: "cart",
+      product: user.property.CART[i]
+    }    
+    console.log(`買い物かご配列: ${i} ${JSON.stringify(postBackData.product)}`)
     
     //posaBackDataからスプレッドシートの情報を取得
     //商品リストインスタンス、情報取得
-    let buff = plSheets[postBackData.product.sheetId]
+    const buff = plSheets[postBackData.product.sheetId]
+    let plSheet, productInfoArray
     if(buff !== undefined){
-      plSheet     = buff.plSheet
-      masterProductArray = plSheet.plSheetVals[Number(postBackData.product.productId)]
+      //console.log(`--producstList インスタンスあり`)
+      plSheet = buff.plSheet
+      productInfoArray = plSheet.plSheetVals[postBackData.product.productId]
     }
     else{
-      [plSheet, masterProductArray] = Order.getProductsInfo(postBackData)
+      //console.log(`--producstList インスタンスなし`)
+      [plSheet, productInfoArray] = await Order.getProductsInfo(postBackData);
       plSheets[postBackData.product.sheetId] = {
         plSheet: plSheet,
-        order: [],        
-      }
+        order: []
+      };
     }
     
-    //console.log(`masterProductArray : ${masterProductArray}`)
-    //TODO: スキップ スプレッドシートの情報を取得できなかったときの対処
-    if(masterProductArray == undefined){
-      console.log(`商品マスタ情報に問題があります。`)
-      console.log(`シートID : ${sheetId} 商品ID : ${postBackData.product.productId}  商品マスタ情報：${masterProductArray}`)
-    }
-    STOCKNOW = masterProductArray[property.constPL.columns.stockNow]
-    upState = masterProductArray[property.constPL.columns.upState]
-
     //商品情報確認
-    STATE_PRODUCTINFO = Order.certificationProductInfo(postBackData, masterProductArray)
+    const STOCKNOW = productInfoArray[property.constPL.columns.stockNow]
+    //console.log(`STOCKNOW: ${STOCKNOW}`)
+    const upState = productInfoArray[property.constPL.columns.upState]
+    //console.log(`upState: ${upState}`)
+    const STATE_PRODUCTINFO = checkProductInfo(postBackData, productInfoArray)
+    //console.log(`STATE_PRODUCTINFO: ${STATE_PRODUCTINFO}`)
 
     //口数確認 不要
     //納品日確認 不要 発注内容確認時に確認しているのと、受注締切後はブロックするから。
@@ -311,7 +424,7 @@ module.exports.orderConfirm = async (user, TIMESTAMP, reOrderConfirm_STATE) => {
         //在庫数
       //再発注伺い時処置 postBackData.product.orderNum = 1
     
-    textProdcut = "●" + postBackData.product.name + "\n" +
+    let textProdcut = "●" + postBackData.product.name + "\n" +
     postBackData.product.norm + "\n" +
     "希望口数: " + postBackData.product.orderNum + "\n"
     if(!upState || STOCKNOW <= 0 || STATE_PRODUCTINFO || Order.chechkTextDeliveryday(postBackData.product.deliveryday)[0]){
@@ -322,22 +435,20 @@ module.exports.orderConfirm = async (user, TIMESTAMP, reOrderConfirm_STATE) => {
     //再発注ボタン押下時
     else if(reOrderConfirm_STATE && postBackData.product.orderState == 1){
       console.log(`--1 再発注、または重複発注`)
-
       ///発注情報作成
       cartInfoArray_OrderPattern.push(1)
 
-      //新規発注データ準備
       //希望納品日
       const desiredDeliveryday = timeMethod.getDateFmt(postBackData.product.deliveryday, "orderList_deliveryday")
       textProdcut += "希望納品日: " + desiredDeliveryday + "\n\n"
 
       //新規発注情報配列（スプレッドシート格納用）
-      orderArray = orderRecords.getOrderArray(TIMESTAMP, postBackData, masterProductArray, desiredDeliveryday)
+      const orderArray = orderRecords.getOrderArray(TIMESTAMP, postBackData, productInfoArray, desiredDeliveryday)
       //console.log(`orderArray: ${orderArray}`)      
       orderArrays.push(orderArray)
 
       //在庫修正
-      newStock = plSheets[postBackData.product.sheetId].plSheet.setNewStockTofirestore(postBackData)
+      const newStock = plSheets[postBackData.product.sheetId].plSheet.setNewStockTofirestore(postBackData.product.productId, postBackData.product.orderNum)
       plSheets[postBackData.product.sheetId].order.push({pId: postBackData.product.productId, newStock: newStock})
 
       //発注件数を追加
@@ -348,12 +459,12 @@ module.exports.orderConfirm = async (user, TIMESTAMP, reOrderConfirm_STATE) => {
     else{
       //発注情報 未確認
       if(postBackData.product.orderState == 0){
-        if(certificationCartInfo(i ,user, postBackData)){
+        if(checkSameProductsInCart(i ,user, postBackData)){
           console.log(`--2 新規発注、かつ買い物かご内に同一納品日・同一商品がある`)              
           cartInfoArray_OrderPattern.push(2)
           cartInfoArray_doubleCart.push(textProdcut)
         }
-        else if(orderRecords.recordNum > 0 && orderRecords.certificateOrderRecord(masterProductArray, postBackData.product.deliveryday, false)){
+        else if(orderRecords.recordNum > 0 && await orderRecords.checkNewOrderisOrdered(productInfoArray, postBackData.product.deliveryday)){
           console.log(`--3 新規発注、かつ発注履歴有、かつ同一納品日・同一商品の発注履歴あり`)
           cartInfoArray_OrderPattern.push(3)
           cartInfoArray_doubleOrder.push(textProdcut)
@@ -362,17 +473,17 @@ module.exports.orderConfirm = async (user, TIMESTAMP, reOrderConfirm_STATE) => {
           console.log(`--4 新規発注、かつ買い物かごダブりなし、かつ（発注履歴なし、または同一納品日・同一商品の発注履歴なし）`)
           ///発注情報作成
           cartInfoArray_OrderPattern.push(4)
-
+          
           //希望納品日
           const desiredDeliveryday = timeMethod.getDateFmt(postBackData.product.deliveryday, "orderList_deliveryday")    
           textProdcut += "希望納品日: " + desiredDeliveryday + "\n\n"
 
           //新規発注情報配列（スプレッドシート格納用）
-          orderArray = orderRecords.getOrderArray(TIMESTAMP, postBackData, masterProductArray, desiredDeliveryday)
+          const orderArray = orderRecords.getOrderArray(TIMESTAMP, postBackData, productInfoArray, desiredDeliveryday)
           orderArrays.push(orderArray)
 
           //在庫修正
-          newStock = plSheets[postBackData.product.sheetId].plSheet.setNewStockTofirestore(postBackData.product.productId, postBackData.product.orderNum)
+          const newStock = plSheets[postBackData.product.sheetId].plSheet.setNewStockTofirestore(postBackData.product.productId, postBackData.product.orderNum)
           plSheets[postBackData.product.sheetId].order.push({pId: postBackData.product.productId, newStock: newStock})
 
           //発注件数を追加
@@ -386,17 +497,14 @@ module.exports.orderConfirm = async (user, TIMESTAMP, reOrderConfirm_STATE) => {
         cartInfoArray_OrderPattern.push(5)
         cartInfoArray_doubleOrder.push(textProdcut)
       }
-    }
-
-    //初期化
-    masterProductArray = null, upState = false, STOCKNOW = 0, orderArray = null
+    }    
   }
   console.log(`--買い物かご情報 仕分け完了\n`)
 
-  //買い物かご情報 更新
+
+  //●買い物かご情報 更新
   for(let k in cartInfoArray_OrderPattern){
     //--0 発注不可商品
-
     //--1 再発注、または重複発注
     //--4 新規発注、かつ買い物かごダブりなし、かつ（発注履歴なし、または同一納品日・同一商品の発注履歴なし）
     if(cartInfoArray_OrderPattern[k] == 1 || cartInfoArray_OrderPattern[k] == 4){
@@ -410,17 +518,17 @@ module.exports.orderConfirm = async (user, TIMESTAMP, reOrderConfirm_STATE) => {
       user.property.CART[k].orderState = 1
     }
   } 
-
-  //発注した商品を買い物かごから削除
   const ORDER_NUM = orderArrays.length
-  user.property.CART.sort()
-  user.property.CART.splice(user.property.CART.length - ORDER_NUM, ORDER_NUM)
+  await user.property.CART.sort()
+  await user.property.CART.splice(user.property.CART.length - ORDER_NUM, ORDER_NUM)
   await user.updateDB()
+  console.log(`--買い物かご情報 更新完了\n`)
+
 
   //●メッセージ作成/送信
   let textMessage = ""
 
-  //発注可能商品あり
+  //発注可能商品あり  
   if(ORDER_NUM > 0){
     //発注履歴挿入
     orderRecords.insertOrderRecord(orderArrays);
@@ -428,8 +536,9 @@ module.exports.orderConfirm = async (user, TIMESTAMP, reOrderConfirm_STATE) => {
     //在庫更新 スプレッドシートに反映
     setNewStockToSpreadSheet(plSheets, orderRecords)
 
-    textMessage = "以下" + ORDER_NUM + "件の発注が完了しました。\n\n" +
+    textMessage = "以下" + ORDER_NUM + "件の発注が完了しました。\n" +
       textProdcutsOrderConfirm + "またのご利用をお待ちしております。"
+
   }
 
   //再伺いあり、かつ買い物かご情報がある（保険）
@@ -442,90 +551,16 @@ module.exports.orderConfirm = async (user, TIMESTAMP, reOrderConfirm_STATE) => {
     textMessage = getReOrderTextMessage(textMessage, cartInfoArray_doubleOrder, cartInfoArray_doubleCart)
   }
 
-  //メッセージ2 テキストメッセージ
+  //テキストメッセージ
   //条件: テキストメッセージが空欄でない
   if(textMessage != ""){
     messagesArray.push(message_JSON.getTextMessage(textMessage));
   }
 
-  //メッセージ3 スタンプ
+  //スタンプメッセージ
   //条件: 新規発注あり、かつ再発注伺いなし
   if(ORDER_NUM > 0 && !reOrderState){
     messagesArray.push(new StampMessage().ありがとう);
   }  
   return messagesArray
-}
-
-//買い物かご内に同一商品が複数あるかチェック
-const certificationCartInfo = (i, user, postBackData) => {
-  for (let j in user.property.CART){
-    if(i != j &&
-      user.property.CART[j].producer == postBackData.product.producer &&
-      user.property.CART[j].name == postBackData.product.name &&
-      user.property.CART[j].norm == postBackData.product.norm &&
-      user.property.CART[j].deliveryday == postBackData.product.deliveryday
-    ){
-      console.log(`---二重発注`)
-      return true
-    }
-  }
-
-  console.log(`---二重発注でない`)
-  return false
-}
-//スプレッドシート 商品リスト 在庫更新
-const setNewStockToSpreadSheet = async (plSheets, orderRecords) => {
-  console.log(`スプレッドシート 商品リスト 在庫更新`)
-  for(let sheetId of orderRecords.allSheetIdsArray){
-    
-    if((plSheets[sheetId] !== null || plSheets[sheetId] !== undefined)){
-      
-      if(JSON.stringify(plSheets[sheetId].order) != JSON.stringify([])){
-        console.log(`シート: ${orderRecords.sheetNumber[sheetId]} 買い物かごに商品あり ${plSheets[sheetId]} 発注あり:${JSON.stringify(plSheets[sheetId].order)}`)
-      
-        for(let buff of plSheets[sheetId].order){
-          await plSheets[sheetId].plSheet.setNewStockToSpreadSheet(buff.pId, buff.newStock)
-        }
-        plSheets[sheetId].plSheet.sheet.saveUpdatedCells(); // save all updates in one call
-      }
-      else{
-        console.log(`シート: ${orderRecords.sheetNumber[sheetId]} 買い物かごに商品あり ${plSheets[sheetId]} 発注なし:${JSON.stringify(plSheets[sheetId].order)}`)
-      }
-    }
-    else{
-      console.log(`シート: ${orderRecords.sheetNumber[sheetId]} 買い物かごに商品なし`)
-    }
-  }
-}
-
-//再伺いメッセージ取得
-//TODO: スキップ 再発注伺いをするときは、追加発注ボタンを表示するが、
-//納品日がテキストのとき 追加発注ボタンを表示しない。どう仕分けるか。
-const getReOrderTextMessage = (textMessage, cartInfoArray_doubleOrder, cartInfoArray_doubleCart) => {
-  //発注履歴にダブり
-  let buff
-  if(cartInfoArray_doubleOrder.length != 0){
-    textMessage += "以下の商品は、同納品日に発注済みです。\n";
-    for(buff of cartInfoArray_doubleOrder){
-      //納品日：商品名
-      textMessage += buff + "\n\n";
-    }
-  }
-
-  //買い物かご内にダブり
-  if(cartInfoArray_doubleCart.length != 0){
-    //納品日：商品名
-    if(textMessage != ""){textMessage += "\n\n"}
-    textMessage += "以下の商品は、同一商品を同納品日に重複発注しようとしています。\n";
-    for(buff of cartInfoArray_doubleCart){
-      //納品日：商品名
-      textMessage += buff + "\n\n"
-    }
-  }
-
-  //再発注メッセージ
-  if(cartInfoArray_doubleOrder.length != 0 || cartInfoArray_doubleCart.length != 0){
-    textMessage += "問題なければ、もう一度上の発注確定ボタンを押してください。"
-  }  
-  return textMessage
 }

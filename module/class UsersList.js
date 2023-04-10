@@ -22,10 +22,8 @@ class User{
     //インスタンス
     this.httpsRequest = "" //https
         
-    //Key
-    this.ID = null
-    
-    //property
+    //userInfo
+    this.ID
     this.property
     /*
     LINE_NAME: LINE_NAME,  
@@ -48,7 +46,7 @@ class User{
     }
 
     if(Firestore_API.dbData.user_buyer[this.ID] !== null ){
-      this.property = Firestore_API.dbData.user_buyer[this.ID]      
+      this.property = Firestore_API.dbData.user_buyer[this.ID]
     }else{
       throw new Error("ID_UNDEFINED_IN_DB")
     }

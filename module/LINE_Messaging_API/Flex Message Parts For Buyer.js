@@ -488,33 +488,33 @@ module.exports.getCardbodyStockNow = function(imageContents, displaytext){
 }
 
 //body 複数注文 商品情報2  商品名 規格 出荷者 市場納品期間
-module.exports.getCardbodyProductInfo2 = (masterProductArray) => {
+module.exports.getCardbodyProductInfo2 = (productInfoArray) => {
   const json = {
     "type": "box",
     "layout": "vertical",
     "contents": [
       {
         "type": "text",
-        "text": masterProductArray[property.constPL.columns.name],
+        "text": productInfoArray[property.constPL.columns.name],
         "size": "md",
         "weight": "bold",
         "wrap": true
       },
       {
         "type": "text",
-        "text": masterProductArray[property.constPL.columns.norm],
+        "text": productInfoArray[property.constPL.columns.norm],
         "size": "md",
         "wrap": true
       },
       {
         "type": "text",
-        "text": masterProductArray[property.constPL.columns.numA] + "-" + masterProductArray[property.constPL.columns.numB] + " " +  masterProductArray[property.constPL.columns.producerName],
+        "text": productInfoArray[property.constPL.columns.numA] + "-" + productInfoArray[property.constPL.columns.numB] + " " +  productInfoArray[property.constPL.columns.producerName],
         "size": "md",
         "adjustMode": "shrink-to-fit"
       },        
       {
         "type": "text",
-        "text": masterProductArray[property.constPL.columns.deliveryPeriod],
+        "text": productInfoArray[property.constPL.columns.deliveryPeriod],
         "size": "md"
       },
     ],
@@ -630,9 +630,9 @@ module.exports.getCardfooterBottunWidth = function(label, textMessage, postBackD
 }
 
 //fotter 納品日ボタン
-module.exports.getCardfooterDeliverydayBottun = function(label, postBackData, masterProductArray){
-  const SD_FMT_LINE = timeMethod.getDateFmt(masterProductArray[property.constPL.columns.sDeliveryday]._seconds*1000, "LINE_SYS")
-  const ED_FMT_LINE = timeMethod.getDateFmt(masterProductArray[property.constPL.columns.eDeliveryday]._seconds*1000, "LINE_SYS")
+module.exports.getCardfooterDeliverydayBottun = function(label, postBackData, productInfoArray){
+  const SD_FMT_LINE = timeMethod.getDateFmt(productInfoArray[property.constPL.columns.sDeliveryday]._seconds*1000, "LINE_SYS")
+  const ED_FMT_LINE = timeMethod.getDateFmt(productInfoArray[property.constPL.columns.eDeliveryday]._seconds*1000, "LINE_SYS")
   //console.log(`納品日ボタン 納品開始日: ${SD_FMT_LINE} 納品終了日: ${ED_FMT_LINE}`)
   return {
     "type": "box",
@@ -647,5 +647,93 @@ module.exports.getCardfooterDeliverydayBottun = function(label, postBackData, ma
       }
     ],
     "cornerRadius": "xxl"
+  }
+}
+
+
+//●発注履歴
+module.exports.getOrderRecordCard = (orderDate, prductName ,norm , producerInfo, stateOrderNum, stateDeliveryday) => {
+  return {
+    "type": "bubble",
+    "size": "kilo",
+    "body": {
+      "type": "box",
+      "layout": "vertical",
+      "contents": [
+        {
+          "type": "box",
+          "layout": "baseline",
+          "contents": [
+            {
+              "type": "text",
+              "text": orderDate,
+              "size": "md",
+              "align": "center"
+            }
+          ],
+          "backgroundColor": "#fa8072",
+          "paddingTop": "sm",
+          "paddingBottom": "sm"              
+        },            
+        {
+          "type": "box",
+          "layout": "vertical",
+          "contents": [
+            {
+              "type": "text",
+              "text": prductName,
+              "size": "md",
+              "weight": "bold",
+              "wrap": true
+            },
+            {
+              "type": "text",
+              "text": norm,
+              "size": "md",
+              "wrap": true
+            },
+            {
+              "type": "text",
+              "text": producerInfo,
+              "size": "md",
+              "adjustMode": "shrink-to-fit"
+            },
+            {
+              "type": "separator",
+              "margin": "xs",
+              "color": "#000000"
+            },
+            {
+              "type": "text",
+              "text": stateOrderNum,
+              "size": "md",
+              "wrap": true
+            },
+            {
+              "type": "text",
+              "text": stateDeliveryday,
+              "size": "md",
+              "adjustMode": "shrink-to-fit"
+            },
+            {
+              "type": "text",
+              "text": " ",
+              "size": "md",
+              "wrap": true
+            },              
+          ],
+          "spacing": "sm",
+          "paddingStart": "xl",
+          "paddingEnd": "xl"        
+        },
+      ],
+      "spacing": "sm",
+      "paddingAll": "none"
+    },
+    "styles": {
+      "body": {
+        "backgroundColor": "#fddea5"
+      },
+    }
   }
 }
