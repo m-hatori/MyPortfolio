@@ -368,6 +368,29 @@ module.exports.getCardOnlyNegativeBottun = (explainText, label1, postodata1) => 
 }
 
 //●商品カード 部品
+//body 続きはこちら
+module.exports.getProductInfoContinuationCard = (postBackData) =>{
+  return {
+    "type": "bubble",
+    "size": "kilo",
+    "body": {
+      "type": "box",
+      "layout": "vertical",
+      "justifyContent": "center",
+      "action": action_JSON.getPostbackAction("続き", postBackData),
+      "contents": [
+        {
+          "type": "text",
+          "text": "続きはこちら",
+          "size": "xl",          
+          "decoration": "underline",
+          "align": "center"
+        }
+      ]
+    } 
+  }
+}
+
 //body 単品/複数注文 商品カード上部  ラベル
 module.exports.getCardlabel = (imageContents, label) => {
   imageContents.push(
@@ -449,7 +472,7 @@ module.exports.getCardbodyNewIcon = (imageContents, judgeNew) => {
         "contents": [
           {
             "type": "icon",
-            "url": property.newItemIcon,
+            "url": process.env.NEW_ICON,
             "size": "4xl"
           }
         ],

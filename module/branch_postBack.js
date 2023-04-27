@@ -5,6 +5,7 @@ const Products = require("./class ProductsList.js");
 const OrderRecords = require("./class OrdersList.js");
 
 const { getUpStateAllList } = require("./npm API/FireStore_API.js");
+//const SpreadSheet_API = require("./npm API/SpreadSheet_API.js");
 
 const StampMessage = require("./LINE_Messaging_API/Class Stamp.js");
 const message_JSON = require("./LINE_Messaging_API/message_JSON.js");
@@ -84,8 +85,7 @@ module.exports.process = async (event, TIMESTAMP_NEW, postBackData, user) => {
   const TAG = postBackData.tag
   const COMMAND = postBackData.command
   const TIMESTAMP = Number(postBackData.timeStamp)
-  console.log(`>>>> tag : ${TAG}, command : ${COMMAND} <<<<`)
-
+  
   //メニュー処理
   if(TAG == "menu"){
     //発注履歴
@@ -130,9 +130,19 @@ module.exports.process = async (event, TIMESTAMP_NEW, postBackData, user) => {
     const timeState = await checkTimeStamp(TIMESTAMP, TIMESTAMP_NEW, TAG, user)
     if(timeState[0]){return timeState[1]}
     
+
+    //商品リスト一覧表示
+    if(TAG == "allList"){
+      let lineNum = true
+      if(COMMAND == "continuation"){ lineNum = false }
+      messagesArray = await getUpStateAllList(TIMESTAMP_NEW, lineNum)      
+    }
+
     //1商品リストの商品一覧表示
-    if(TAG == "productsList"){
-      messagesArray = await new Products(postBackData.product.sheetId).getAllproductInfo(postBackData.product.ORERBUTTON_STATE, postBackData.product.OPTION_UPSTATE, TIMESTAMP_NEW)
+    else if(TAG == "productsList"){
+      let lineNum = true
+      if(COMMAND == "continuation"){ lineNum = false }
+      messagesArray = await new Products(postBackData.product.sheetId).getAllproductInfo(postBackData.product.ORERBUTTON_STATE, postBackData.product.OPTION_UPSTATE, TIMESTAMP_NEW, lineNum)
     }
     
     //複数発注処理（買い物かご）
@@ -175,9 +185,9 @@ module.exports.process = async (event, TIMESTAMP_NEW, postBackData, user) => {
         //STATE_CHECK_DELIVERYDAY 納品期間チェック: 2
         messagesArray = await Cart.getCarouselMessage(user, TIMESTAMP_NEW, true, 2)
 
-        const textMessage = "最初は、希望口数は1、希望市場納品日は最短納品可能日が指定されています。\n\n「口数」、「納品日」ボタンを押すと、それぞれ変更できます。"
+        //const textMessage = "最初は、希望口数は1、希望市場納品日は最短納品可能日が指定されています。\n\n「口数」、「納品日」ボタンを押すと、それぞれ変更できます。"
         //+ "「削除」ボタンを押すと、買い物かごから削除できます。\n\n"
-        messagesArray.push(message_JSON.getTextMessage(textMessage))
+        //messagesArray.push(message_JSON.getTextMessage(textMessage))
         user.setRichMenu()
         return messagesArray
       }
@@ -199,15 +209,25 @@ module.exports.process = async (event, TIMESTAMP_NEW, postBackData, user) => {
       else if(COMMAND == "orderConfirm"){
         console.log(`${CONSOLE_STATE}: 新規発注確定`)
         const reOrderConfirm_STATE = false
-        messagesArray = await Cart.orderConfirm(user, TIMESTAMP, reOrderConfirm_STATE)
-        return messagesArray
+        
+        let orderArrays, plSheets
+        [messagesArray, orderArrays, plSheets] = await Cart.orderConfirm(user, TIMESTAMP, reOrderConfirm_STATE)
+        if(messagesArray.length > 0){user.httpsRequest.replyMessageByAxios(event, messagesArray)}
+        
+        Order.setOrderInfo(orderArrays, plSheets)
+        return []                
       }
       //再発注確定
       else if(COMMAND == "reOrderConfirm"){
         console.log(`${CONSOLE_STATE}: 再発注確定`)
         const reOrderConfirm_STATE = true
-        messagesArray = await Cart.orderConfirm(user, TIMESTAMP, reOrderConfirm_STATE)
-        return messagesArray
+
+        let orderArrays, plSheets
+        [messagesArray, orderArrays, plSheets] = await Cart.orderConfirm(user, TIMESTAMP, reOrderConfirm_STATE)
+        if(messagesArray.length > 0){user.httpsRequest.replyMessageByAxios(event, messagesArray)}
+        
+        Order.setOrderInfo(orderArrays, plSheets)
+        return []
       }
 
     
@@ -239,7 +259,7 @@ module.exports.process = async (event, TIMESTAMP_NEW, postBackData, user) => {
       //2 希望口数伺い クイックリプライメッセージ
       else if(COMMAND == "selectOrderNum"){
         console.log(`${CONSOLE_STATE}: 希望口数伺い`)
-        messagesArray = Order.selectOrderNum(postBackData)
+        messagesArray = await Order.selectOrderNum(postBackData)
       }
       //3 希望口数指定 買い物かごに反映
       else if(COMMAND == "setOrderNum"){
@@ -283,7 +303,7 @@ module.exports.process = async (event, TIMESTAMP_NEW, postBackData, user) => {
         let textMessage_changeDeliveryday = "No." + (Number(CARTINFOARRAY_INDEX) + 1)
         if(changeStateDeliveryday){
           await user.updateDB()
-          textMessage_changeDeliveryday += "指定日の翌競り日に変更しました"
+          textMessage_changeDeliveryday += "希望市場納品日は、翌競り日に修正させていただきました。ご了承ください。"
           messagesArray.push(message_JSON.getTextMessage(textMessage_changeDeliveryday))
         }
         else{
@@ -334,7 +354,7 @@ module.exports.process = async (event, TIMESTAMP_NEW, postBackData, user) => {
       //1 希望口数伺い クイックリプライメッセージ
       else if(COMMAND == "selectOrderNum"){
         console.log(`${CONSOLE_STATE}: 希望口数伺い`)
-        messagesArray = Order.selectOrderNum(postBackData)        
+        messagesArray = await Order.selectOrderNum(postBackData)        
       }
       //2 希望口数指定 postBackDataに反映
       else if(COMMAND == "setOrderNum"){
@@ -366,13 +386,26 @@ module.exports.process = async (event, TIMESTAMP_NEW, postBackData, user) => {
       //4 発注確定
       else if(COMMAND == "orderConfirm"){
         console.log(`${CONSOLE_STATE}: 発注確定`)
-        messagesArray = OneOrder.orderConfirm(user, TIMESTAMP, postBackData)
+        
+        let orderArrays, plSheets
+        [messagesArray, orderArrays, plSheets] = await OneOrder.orderConfirm(user, TIMESTAMP, postBackData)
+        if(messagesArray.length > 0){user.httpsRequest.replyMessageByAxios(event, messagesArray)}
+        console.log("メッセージ送信")
+
+        Order.setOrderInfo(orderArrays, plSheets)
+        return []
       }
       //5 再発注確定
       else if(COMMAND == "reOrderConfirm"){
         console.log(`${CONSOLE_STATE}:再発注確定`)
-        messagesArray = OneOrder.orderConfirm(user, TIMESTAMP, postBackData)
+        
+        let orderArrays, plSheets
+        [messagesArray, orderArrays, plSheets] =  await OneOrder.orderConfirm(user, TIMESTAMP, postBackData)
+        if(messagesArray.length > 0){user.httpsRequest.replyMessageByAxios(event, messagesArray)}
+        console.log("メッセージ送信")
 
+        Order.setOrderInfo(orderArrays, plSheets)
+        return []
       }
       else{
         console.log(`${CONSOLE_STATE}: 該当イベントなし`)

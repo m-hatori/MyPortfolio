@@ -7,24 +7,23 @@
 
 /* eslint-disable semi-spacing */
 /* eslint-disable one-var */
-const property = require("./property.js");
 const Firestore_API = require("./npm API/FireStore_API.js");
 
 const message_JSON = require("./LINE_Messaging_API/message_JSON.js");
 const StampMessage = require("./LINE_Messaging_API/Class Stamp.js");
 
 
+//リッチメニューID 読み込み
+//const richMenu = require("./richMenu_official.js");
+const richMenu = require("./richMenu_test.js");
+
 //●オブジェクト：DBレベル//
 class User{
-  constructor(){
-    this.SECRETS
-
-    //インスタンス
-    this.httpsRequest = "" //https
-        
+  constructor(ID){
     //userInfo
-    this.ID
+    this.ID = ID
     this.property
+    //this.order
     /*
     LINE_NAME: LINE_NAME,  
     STATE: STATE,
@@ -34,6 +33,9 @@ class User{
     BUYER_NAME: BUYER_NAME,
     CART:[],
     */
+
+    //httpsインスタンス
+    this.httpsRequest
   }
  
   //ユーザー情報取得 属性取得
@@ -41,15 +43,32 @@ class User{
     if(this.ID === undefined){
       throw new Error("ID_UNDEFINED_FROM_LINE")
     }
-    else if(Firestore_API.dbData.user_buyer === null || Firestore_API.dbData.user_buyer === undefined ){
-      Firestore_API.dbData.user_buyer = await Firestore_API.getDocFmDB(Firestore_API.dbRef.user_buyer)      
+    else{
+      if(Firestore_API.dbData.user_buyer === null || Firestore_API.dbData.user_buyer === undefined ){
+        Firestore_API.dbData.user_buyer = await Firestore_API.getDocFmDB(Firestore_API.dbRef.user_buyer)
+      }
+      
+      /*
+      if(Firestore_API.dbData.order === null || Firestore_API.dbData.order === undefined ){
+        Firestore_API.dbData.order = await Firestore_API.getDocFmDB(Firestore_API.dbRef.order)
+      }
+      */
     }
+       
 
     if(Firestore_API.dbData.user_buyer[this.ID] !== null ){
-      this.property = Firestore_API.dbData.user_buyer[this.ID]
+      this.property = await Firestore_API.dbData.user_buyer[this.ID]
     }else{
       throw new Error("ID_UNDEFINED_IN_DB")
     }
+
+    /*
+    if(Firestore_API.dbData.order[this.ID] !== null ){
+      this.order = Firestore_API.dbData.order[this.ID]
+    }else{
+      throw new Error("ID_UNDEFINED_IN_DB")
+    }
+    */
   }
 
   //フォロー時処理
@@ -94,16 +113,25 @@ class User{
 
   //ユーザー情報 更新
   async updateDB(){
-    // {[this.ID + ".CART"]: [this.property.CART]}  //キーに変数名を入れたい場合、[]で囲う！
+    // {[this.ID + ".CART"]: [this.property.CART]}  //キーに変数名を入れたい場合、[]で囲う
     await Firestore_API.dbRef.user_buyer.update({
       [this.ID]: this.property
     });
     this.setRichMenu()
   }
   
+  //発注情報追記
+  /*
+  async updateOrderDB(){
+    await Firestore_API.dbRef.order.update({
+      [this.ID]: this.order
+    });
+  }
+  */
+
   //リッチメニュー切り替え
   setRichMenu(){
-    this.httpsRequest.setRichMenu(this.ID, property.cartNum[this.property.CART.length])
+    this.httpsRequest.setRichMenu(this.ID, richMenu.Ids[this.property.CART.length])
   }
 }
 module.exports = User

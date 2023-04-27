@@ -117,13 +117,13 @@ module.exports.checkDeliveryday = (BEFORE_UNIXTTIME) =>{
 //●納品日 納品期間チェック
 //From yyyy-MM-DD
 //To text, changeState:true: , false: 
-module.exports.checkdeliveryPeriod = (unix_D, masterProductArray) => {
+module.exports.checkdeliveryPeriod = (unix_D, productInfoArray) => {
   
   //納品開始日
-  const unix_sD =  masterProductArray[property.constPL.columns.sDeliveryday]._seconds*1000
+  const unix_sD =  productInfoArray[property.constPL.columns.sDeliveryday]._seconds*1000
 
   //納品終了日
-  const unix_eD =  masterProductArray[property.constPL.columns.eDeliveryday]._seconds*1000
+  const unix_eD =  productInfoArray[property.constPL.columns.eDeliveryday]._seconds*1000
 
   //判定
   let text, changeState = false
@@ -135,9 +135,12 @@ module.exports.checkdeliveryPeriod = (unix_D, masterProductArray) => {
     text = "納品期間外のため、再指定してください。" 
     
     //納品日
-    console.log("---納品開始日:" + utcToZonedTime(new Date(unix_sD), module.exports.TIMEZONE) + "  unix:" + unix_sD)
-    console.log("---希望納品日:" + utcToZonedTime(new Date(unix_D), module.exports.TIMEZONE) + "  unix:" + unix_D)
-    console.log("---納品終了日:" + utcToZonedTime(new Date(unix_eD), module.exports.TIMEZONE) + "  unix:" + unix_eD)
+    console.log("---納品開始日:" + utcToZonedTime(new Date(unix_sD), module.exports.TIMEZONE) + "  unixTime: " + unix_sD)
+    console.log("---希望納品日:" + utcToZonedTime(new Date(unix_D), module.exports.TIMEZONE) + "  unixTime: " + unix_D)
+    console.log("---納品終了日:" + utcToZonedTime(new Date(unix_eD), module.exports.TIMEZONE) + "  unixTime: " + unix_eD)
+    console.log("---納品開始日:" + new Date(unix_sD) + "  unixTime: " + unix_sD)
+    console.log("---希望納品日:" + new Date(unix_D) + "  unixTime: " + unix_D)
+    console.log("---納品終了日:" + new Date(unix_eD) + "  unixTime: " + unix_eD)
   }
   else{
     console.log(`--納品期間 内`)

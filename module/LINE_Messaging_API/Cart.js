@@ -4,12 +4,20 @@ const timeMethod = require("../getTime.js");
 
 const OrderRecords = require("../class OrdersList.js");
 
-const SpreadSheet_API = require("../npm API/SpreadSheet_API.js");
-
 const message_JSON = require("./message_JSON.js");
 const flexMessage_ForBuyer = require("./Flex Message Parts For Buyer.js");
 const Order = require("./Order.js");
 const StampMessage = require("./Class Stamp.js");
+
+const AsyncLock = require(`async-lock`);
+
+//排他制御
+const lock = new AsyncLock({
+  //timeout: 60*1000, // タイムアウトを指定 - ロックを取得する前にアイテムがキューに留まることができる最大時間
+  //maxOccupationTime: 60*1000, // 最大占有時間を指定 - キューに入ってから実行を完了するまでの最大許容時間
+  maxExecutionTime: 5*60*1000, // 最大実行時間を指定 - ロックを取得してから実行を完了するまでの最大許容時間
+  //maxPending: 10 // 保留中のタスクの最大数を設定 - 一度にキューで許可されるタスクの最大数
+});
 
 
 //●商品情報チェック
@@ -64,39 +72,13 @@ const checkSameProductsInCart = (i, user, postBackData) => {
   }
   return false
 }
-//スプレッドシート 商品リスト 複数在庫更新
-const setNewStockToSpreadSheet = async (plSheets, orderRecords) => {
-  const ps = []
-  for(let sheetId of property.productsSheetIds){
-    if((plSheets[sheetId] !== undefined)){
-      if(JSON.stringify(plSheets[sheetId].order) != JSON.stringify([])){
-        console.log(`--シート: ${property.sheetNumber[sheetId]} 在庫更新:${JSON.stringify(plSheets[sheetId].order)}`)
-        const p = []
-        for(let buff of plSheets[sheetId].order){
-          p.push(plSheets[sheetId].plSheet.setNewStockToSpreadSheet(buff.pId, buff.newStock))
-        }
-        Promise.all(p).then(async ()=>{
-          ps.push(plSheets[sheetId].plSheet.sheet.saveUpdatedCells()); // save all updates in one call          
-        })        
-      }
-    }
-  }
-
-  Promise.all(ps).then(async ()=>{
-    console.log(`--スプレッドシート 商品リスト 在庫更新 完了`)
-  })
-}
 
 //再伺いメッセージ取得
 //TODO: スキップ 再発注伺いをするときは、追加発注ボタンを表示するが、
 //納品日がテキストのとき 追加発注ボタンを表示しない。どう仕分けるか。
-const getReOrderTextMessage = (textMessage, cartInfoArray_doubleOrder, cartInfoArray_doubleCart) => {
-  
-  //新規発注があるとき改行
-  if(textMessage != ""){
-    textMessage += "\n\n"
-  }
-  
+const getReOrderTextMessage = (cartInfoArray_doubleOrder, cartInfoArray_doubleCart) => {
+  let textMessage = ""
+
   //発注履歴にダブり 
   if(cartInfoArray_doubleOrder.length != 0){
     textMessage += "以下の商品は、同納品日に発注済みです。\n";
@@ -109,7 +91,6 @@ const getReOrderTextMessage = (textMessage, cartInfoArray_doubleOrder, cartInfoA
   //買い物かご内にダブり
   if(cartInfoArray_doubleCart.length != 0){
     //納品日：商品名
-    if(textMessage != ""){textMessage += "\n\n"}
     textMessage += "以下の商品は、同一商品を同納品日に重複発注しようとしています。\n";
     for(let buff of cartInfoArray_doubleCart){
       //納品日：商品名
@@ -133,6 +114,7 @@ module.exports.getCarouselMessage = async (user, TIMESTAMP, STATE_NEWORDER, STAT
   //●前処理
   //変数定義:メッセージ
   let messagesArray = []      
+  let STATE_TEXT, changeCart = false, textOrderNum = "", textDeliveryday = "", textDeliverydayState = [false, "商品No."]
   let card, columns = []
   let bodyContents  = [], imageContents = [], footerContents = []
 
@@ -140,12 +122,8 @@ module.exports.getCarouselMessage = async (user, TIMESTAMP, STATE_NEWORDER, STAT
   let plSheets ={}
   let cartPNum, picUrl
 
-  //変数定義:買い物かご情報
-  let STATE_TEXT, changeCart = false, textOrderNum = "", textDeliveryday = "", textDeliverydayState = [false, "商品No."]
-
   //●メッセージ作成
-  //買い物かご内 商品カード作成ループ
-  console.log(`----買い物かご商品表示----` )
+  //買い物かご内 商品カード作成ループ  
   for (let i in user.property.CART){
     console.log(`\n買い物かご配列: ${i}`)
     let postBackData = {
@@ -327,9 +305,7 @@ module.exports.getCarouselMessage = async (user, TIMESTAMP, STATE_NEWORDER, STAT
     }
     
     //説明文
-    let explainText = 
-      "商品・口数・納品日を\nご確認ください。\n\n問題なければ下の\n「発注確定」ボタンを押してください。\n\n" +
-      "「買い物かごリセット」ボタンを押すと、買い物かご内の商品がすべて削除できます。\n\n" + 
+    let explainText = "商品・口数・納品日を\nご確認ください。\n\n問題なければ下の\n「発注確定」ボタンを押してください。\n\n" +
       "操作が反映されていないときは、再度買い物かごボタンを押してください。"
     const endCard = flexMessage_ForBuyer.getCardOrderCertification(explainText, "発注確定", postBackData_OrderConfirm, "買い物かご\nリセット", postBackData_allDelete)
     columns.push(endCard)
@@ -349,218 +325,218 @@ module.exports.getCarouselMessage = async (user, TIMESTAMP, STATE_NEWORDER, STAT
 //●発注確定
 //reOrderConfirm_STATE true：再発注, false：新規発注
 module.exports.orderConfirm = async (user, TIMESTAMP, reOrderConfirm_STATE) => {
-  //●前処理
-  //変数定義:メッセージ
-  let messagesArray = []
-
-  //変数定義:発注情報
-  const orderArrays = []
-  let textProdcutsOrderConfirm = ""
-  const cartInfoArray_OrderPattern = [], cartInfoArray_doubleOrder = [], cartInfoArray_doubleCart = []
-  
-  //発注履歴取得
-  const orderRecords = new OrderRecords(user)
-  await orderRecords.getUserOrderData()
-  
-  //変数定義:商品リスト情報
-  const plSheets = {}
-
-  //●買い物かご情報 仕分け
-  for (let i in user.property.CART){
+  const key = `発注情報仕分け`
+  return await lock.acquire(key, async () => {
+    console.time(key)
     
-    //買い物かご 1商品情報抽出
-    let postBackData = {
-      timeStamp: TIMESTAMP,
-      tag: "cart",
-      product: user.property.CART[i]
-    }    
-    console.log(`買い物かご配列: ${i} ${JSON.stringify(postBackData.product)}`)
-    
-    //posaBackDataからスプレッドシートの情報を取得
-    //商品リストインスタンス、情報取得
-    const buff = plSheets[postBackData.product.sheetId]
-    let plSheet, productInfoArray
-    if(buff !== undefined){
-      //console.log(`--producstList インスタンスあり`)
-      plSheet = buff.plSheet
-      productInfoArray = plSheet.plSheetVals[postBackData.product.productId]
-    }
-    else{
-      //console.log(`--producstList インスタンスなし`)
-      [plSheet, productInfoArray] = await Order.getProductsInfo(postBackData);
-      plSheets[postBackData.product.sheetId] = {
-        plSheet: plSheet,
-        order: []
-      };
-    }
-    
-    //商品情報確認
-    const STOCKNOW = productInfoArray[property.constPL.columns.stockNow]
-    //console.log(`STOCKNOW: ${STOCKNOW}`)
-    const upState = productInfoArray[property.constPL.columns.upState]
-    //console.log(`upState: ${upState}`)
-    const STATE_PRODUCTINFO = checkProductInfo(postBackData, productInfoArray)
-    //console.log(`STATE_PRODUCTINFO: ${STATE_PRODUCTINFO}`)
+    //●前処理
+    //変数定義:メッセージ
+    let messagesArray = []
 
-    //口数確認 不要
-    //納品日確認 不要 発注内容確認時に確認しているのと、受注締切後はブロックするから。
-    //ただし、発注確定後の納品日はチェックせずに許容する。
+    //変数定義:商品リスト情報
+    const plSheets = {}
 
-    //発注情報チェック
-      //発注不可条件 → 再発注伺い
-        //未掲載、または在庫<0、またはスプレッドシートと商品情報が不一致、または希望納品日が日付でない
+    //変数定義:発注情報
+    const orderArrays = []
+    let textProdcutsOrderConfirm = ""
+    const cartInfoArray_OrderPattern = [], cartInfoArray_doubleOrder = [], cartInfoArray_doubleCart = []
+
+    //発注履歴取得
+    const orderRecords = new OrderRecords(user)
+    await orderRecords.getUserOrderData()
+
+    //●発注情報 仕分け
+    for (let i in user.property.CART){
+      //買い物かご 1商品情報抽出
+      let postBackData = {
+        timeStamp: TIMESTAMP,
+        tag: "cart",
+        product: user.property.CART[i]
+      }    
+      console.log(`買い物かご配列: ${i} ${JSON.stringify(postBackData.product)}`)
       
-      //再発注ボタン押下時 発注可能条件
-        //発注不可条件に該当せず、reOrder = 1 ：発注情報確認済み
+      //posaBackDataからスプレッドシートの情報を取得
+      //商品リストインスタンス、情報取得
+      const buff = plSheets[postBackData.product.sheetId]
+      let plSheet, productInfoArray
+      if(buff !== undefined){
+        //console.log(`--producstList インスタンスあり`)
+        plSheet = buff.plSheet
+        productInfoArray = plSheet.plSheetVals[postBackData.product.productId]
+      }
+      else{
+        //console.log(`--producstList インスタンスなし`)
+        [plSheet, productInfoArray] = await Order.getProductsInfo(postBackData);
+        plSheets[postBackData.product.sheetId] = {
+          plSheet: plSheet,
+          order: []
+        };
+      }
+      
+      //商品情報確認
+      const STOCKNOW = productInfoArray[property.constPL.columns.stockNow]
+      //console.log(`STOCKNOW: ${STOCKNOW}`)
+      const upState = productInfoArray[property.constPL.columns.upState]
+      //console.log(`upState: ${upState}`)
+      const STATE_PRODUCTINFO = checkProductInfo(postBackData, productInfoArray)
+      //console.log(`STATE_PRODUCTINFO: ${STATE_PRODUCTINFO}`)
 
-      //新規発注ボタン押下時 発注可能条件
-      //再発注伺い 条件
-        //発注不可条件に該当せず、reOrder = 0：発注情報未確認
-          //買い物かご内に同一商品がある →  再発注確認
-          //発注履歴有、かつ各発注履歴について、発注しようとしている情報との重複がある → 再発注 
+      //口数確認 不要
+      //納品日確認 不要 発注内容確認時に確認しているのと、受注締切後はブロックするから。
+      //ただし、発注確定後の納品日はチェックせずに許容する。
 
-      //発注時処置
-        //orderArraysにorderArrayを格納
-        //在庫数
-      //再発注伺い時処置 postBackData.product.orderNum = 1
-    
-    let textProdcut = "●" + postBackData.product.name + "\n" +
-    postBackData.product.norm + "\n" +
-    "希望口数: " + postBackData.product.orderNum + "\n"
-    if(!upState || STOCKNOW <= 0 || STATE_PRODUCTINFO || Order.chechkTextDeliveryday(postBackData.product.deliveryday)[0]){
-      console.log(`--0 発注不可商品`) //そのまま買い物かご内に残しておく
-      cartInfoArray_OrderPattern.push(0)
-    }
+      //発注情報チェック
+        //発注不可条件 → 再発注伺い
+          //未掲載、または在庫<0、またはスプレッドシートと商品情報が不一致、または希望納品日が日付でない
+        
+        //再発注ボタン押下時 発注可能条件
+          //発注不可条件に該当せず、reOrder = 1 ：発注情報確認済み
 
-    //再発注ボタン押下時
-    else if(reOrderConfirm_STATE && postBackData.product.orderState == 1){
-      console.log(`--1 再発注、または重複発注`)
-      ///発注情報作成
-      cartInfoArray_OrderPattern.push(1)
+        //新規発注ボタン押下時 発注可能条件
+        //再発注伺い 条件
+          //発注不可条件に該当せず、reOrder = 0：発注情報未確認
+            //買い物かご内に同一商品がある →  再発注確認
+            //発注履歴有、かつ各発注履歴について、発注しようとしている情報との重複がある → 再発注 
 
-      //希望納品日
-      const desiredDeliveryday = timeMethod.getDateFmt(postBackData.product.deliveryday, "orderList_deliveryday")
-      textProdcut += "希望納品日: " + desiredDeliveryday + "\n\n"
+        //発注時処置
+          //orderArraysにorderArrayを格納
+          //在庫数
+        //再発注伺い時処置 postBackData.product.orderNum = 1
+      
+      let textProdcut = "●" + postBackData.product.name + "\n" +
+      postBackData.product.norm + "\n" +
+      "希望口数: " + postBackData.product.orderNum + "\n"
+      if(!upState || STOCKNOW <= 0 || STATE_PRODUCTINFO || Order.chechkTextDeliveryday(postBackData.product.deliveryday)[0]){
+        console.log(`--0 発注不可商品`) //そのまま買い物かご内に残しておく
+        cartInfoArray_OrderPattern.push(0)
+      }
 
-      //新規発注情報配列（スプレッドシート格納用）
-      const orderArray = orderRecords.getOrderArray(TIMESTAMP, postBackData, productInfoArray, desiredDeliveryday)
-      //console.log(`orderArray: ${orderArray}`)      
-      orderArrays.push(orderArray)
+      //再発注ボタン押下時
+      else if(reOrderConfirm_STATE && postBackData.product.orderState == 1){
+        console.log(`--1 再発注、または重複発注`)
+        ///発注情報作成
+        cartInfoArray_OrderPattern.push(1)
 
-      //在庫修正
-      const newStock = plSheets[postBackData.product.sheetId].plSheet.setNewStockTofirestore(postBackData.product.productId, postBackData.product.orderNum)
-      plSheets[postBackData.product.sheetId].order.push({pId: postBackData.product.productId, newStock: newStock})
+        //希望納品日
+        const desiredDeliveryday = timeMethod.getDateFmt(postBackData.product.deliveryday, "orderList_deliveryday")
+        textProdcut += "希望納品日: " + desiredDeliveryday + "\n\n"
 
-      //発注件数を追加
-      textProdcutsOrderConfirm += textProdcut
-    }
+        //新規発注情報配列（スプレッドシート格納用）
+        const orderArray = orderRecords.getOrderArray(TIMESTAMP, postBackData, productInfoArray, desiredDeliveryday)
+        //console.log(`orderArray: ${orderArray}`)      
+        orderArrays.push(orderArray)
 
-    //新規発注ボタン押下時
-    else{
-      //発注情報 未確認
-      if(postBackData.product.orderState == 0){
-        if(checkSameProductsInCart(i ,user, postBackData)){
-          console.log(`--2 新規発注、かつ買い物かご内に同一納品日・同一商品がある`)              
-          cartInfoArray_OrderPattern.push(2)
-          cartInfoArray_doubleCart.push(textProdcut)
+        //在庫修正
+        const newStock = plSheets[postBackData.product.sheetId].plSheet.setNewStockTofirestore(postBackData.product.productId, postBackData.product.orderNum)
+        plSheets[postBackData.product.sheetId].order.push({pId: postBackData.product.productId, newStock: newStock})
+
+        //発注件数を追加
+        textProdcutsOrderConfirm += textProdcut
+      }
+
+      //新規発注ボタン押下時
+      else{
+        //発注情報 未確認
+        if(postBackData.product.orderState == 0){
+          if(checkSameProductsInCart(i ,user, postBackData)){
+            console.log(`--2 新規発注、かつ買い物かご内に同一納品日・同一商品がある`)              
+            cartInfoArray_OrderPattern.push(2)
+            cartInfoArray_doubleCart.push(textProdcut)
+          }
+          else if(orderRecords.recordNum > 0 && await orderRecords.checkNewOrderisOrdered(productInfoArray, postBackData.product.deliveryday)){
+            console.log(`--3 新規発注、かつ発注履歴有、かつ同一納品日・同一商品の発注履歴あり`)
+            cartInfoArray_OrderPattern.push(3)
+            cartInfoArray_doubleOrder.push(textProdcut)
+          }
+          else{
+            console.log(`--4 新規発注、かつ買い物かごダブりなし、かつ（発注履歴なし、または同一納品日・同一商品の発注履歴なし）`)
+            ///発注情報作成
+            cartInfoArray_OrderPattern.push(4)
+            
+            //希望納品日
+            const desiredDeliveryday = timeMethod.getDateFmt(postBackData.product.deliveryday, "orderList_deliveryday")    
+            textProdcut += "希望納品日: " + desiredDeliveryday + "\n\n"
+
+            //新規発注情報配列（スプレッドシート格納用）
+            const orderArray = orderRecords.getOrderArray(TIMESTAMP, postBackData, productInfoArray, desiredDeliveryday)
+            orderArrays.push(orderArray)
+
+            //在庫修正
+            const newStock = plSheets[postBackData.product.sheetId].plSheet.setNewStockTofirestore(postBackData.product.productId, postBackData.product.orderNum)
+            plSheets[postBackData.product.sheetId].order.push({pId: postBackData.product.productId, newStock: newStock})
+
+            //発注件数を追加
+            textProdcutsOrderConfirm += textProdcut
+          }
         }
-        else if(orderRecords.recordNum > 0 && await orderRecords.checkNewOrderisOrdered(productInfoArray, postBackData.product.deliveryday)){
-          console.log(`--3 新規発注、かつ発注履歴有、かつ同一納品日・同一商品の発注履歴あり`)
-          cartInfoArray_OrderPattern.push(3)
+        //発注情報 確認済み
+        else{
+          //再伺い
+          console.log(`--5 新規発注、かつ再発注フラグ 十中八九確定ボタン2度押し`)
+          cartInfoArray_OrderPattern.push(5)
           cartInfoArray_doubleOrder.push(textProdcut)
         }
-        else{
-          console.log(`--4 新規発注、かつ買い物かごダブりなし、かつ（発注履歴なし、または同一納品日・同一商品の発注履歴なし）`)
-          ///発注情報作成
-          cartInfoArray_OrderPattern.push(4)
-          
-          //希望納品日
-          const desiredDeliveryday = timeMethod.getDateFmt(postBackData.product.deliveryday, "orderList_deliveryday")    
-          textProdcut += "希望納品日: " + desiredDeliveryday + "\n\n"
-
-          //新規発注情報配列（スプレッドシート格納用）
-          const orderArray = orderRecords.getOrderArray(TIMESTAMP, postBackData, productInfoArray, desiredDeliveryday)
-          orderArrays.push(orderArray)
-
-          //在庫修正
-          const newStock = plSheets[postBackData.product.sheetId].plSheet.setNewStockTofirestore(postBackData.product.productId, postBackData.product.orderNum)
-          plSheets[postBackData.product.sheetId].order.push({pId: postBackData.product.productId, newStock: newStock})
-
-          //発注件数を追加
-          textProdcutsOrderConfirm += textProdcut
-        }
-      }
-      //発注情報 確認済み
-      else{
-        //再伺い
-        console.log(`--5 新規発注、かつ再発注フラグ 十中八九確定ボタン2度押し`)
-        cartInfoArray_OrderPattern.push(5)
-        cartInfoArray_doubleOrder.push(textProdcut)
-      }
-    }    
-  }
-  console.log(`--買い物かご情報 仕分け完了\n`)
-
-
-  //●買い物かご情報 更新
-  for(let k in cartInfoArray_OrderPattern){
-    //--0 発注不可商品
-    //--1 再発注、または重複発注
-    //--4 新規発注、かつ買い物かごダブりなし、かつ（発注履歴なし、または同一納品日・同一商品の発注履歴なし）
-    if(cartInfoArray_OrderPattern[k] == 1 || cartInfoArray_OrderPattern[k] == 4){
-      //買い物かごから削除
-      delete user.property.CART[k]
+      }    
     }
-    //--2 新規発注、かつ買い物かご内に同一納品日・同一商品がある
-    //--3 新規発注、かつ発注履歴有、かつ同一納品日・同一商品の発注履歴あり
-    //--5 新規発注、かつ再発注フラグ 十中八九確定ボタン2度押し
-    else if(cartInfoArray_OrderPattern[k] == 2 || cartInfoArray_OrderPattern[k] == 3 || cartInfoArray_OrderPattern[k] == 5){
-      user.property.CART[k].orderState = 1
+    console.log(`--買い物かご情報 仕分け完了\n`)
+
+
+    //●買い物かご情報 更新
+    for(let k in cartInfoArray_OrderPattern){
+      //--0 発注不可商品
+      //--1 再発注、または重複発注
+      //--4 新規発注、かつ買い物かごダブりなし、かつ（発注履歴なし、または同一納品日・同一商品の発注履歴なし）
+      if(cartInfoArray_OrderPattern[k] == 1 || cartInfoArray_OrderPattern[k] == 4){
+        //買い物かごから削除
+        delete user.property.CART[k]
+      }
+      //--2 新規発注、かつ買い物かご内に同一納品日・同一商品がある
+      //--3 新規発注、かつ発注履歴有、かつ同一納品日・同一商品の発注履歴あり
+      //--5 新規発注、かつ再発注フラグ 十中八九確定ボタン2度押し
+      else if(cartInfoArray_OrderPattern[k] == 2 || cartInfoArray_OrderPattern[k] == 3 || cartInfoArray_OrderPattern[k] == 5){
+        user.property.CART[k].orderState = 1
+      }
+    } 
+    const ORDER_NUM = orderArrays.length
+    await user.property.CART.sort()
+    await user.property.CART.splice(user.property.CART.length - ORDER_NUM, ORDER_NUM)
+    await user.updateDB()
+    console.log(`--買い物かご情報 更新完了`)
+
+
+    //●メッセージ作成/送信
+    let textMessage = ""
+
+    //再伺いあり、かつ買い物かご情報がある（保険）
+    const reOrderState = (cartInfoArray_doubleOrder.length > 0 || cartInfoArray_doubleCart.length > 0)
+    //console.log(`reOrderState: ${reOrderState}`)
+    if(reOrderState && user.property.CART.length > 0){
+      //STATE_NEWORDER 追加発注確認: false
+      //STATE_CHECK_DELIVERYDAY 納品日チェック不要:0    
+      messagesArray = await module.exports.getCarouselMessage(user, TIMESTAMP, false, 0)
+      textMessage = getReOrderTextMessage(cartInfoArray_doubleOrder, cartInfoArray_doubleCart)
     }
-  } 
-  const ORDER_NUM = orderArrays.length
-  await user.property.CART.sort()
-  await user.property.CART.splice(user.property.CART.length - ORDER_NUM, ORDER_NUM)
-  await user.updateDB()
-  console.log(`--買い物かご情報 更新完了\n`)
 
+    //発注可能商品あり
+    if(ORDER_NUM > 0){
+      textMessage = "以下" + ORDER_NUM + "件の発注が完了しました。\n" +
+        textProdcutsOrderConfirm + "またのご利用をお待ちしております。" + textMessage
+    }
 
-  //●メッセージ作成/送信
-  let textMessage = ""
+    //テキストメッセージ
+    //条件: テキストメッセージが空欄でない
+    if(textMessage != ""){
+      //console.log(textMessage)
+      messagesArray.push(message_JSON.getTextMessage(textMessage));
+    }
 
-  //発注可能商品あり  
-  if(ORDER_NUM > 0){
-    //発注履歴挿入
-    orderRecords.insertOrderRecord(orderArrays);
-
-    //在庫更新 スプレッドシートに反映
-    setNewStockToSpreadSheet(plSheets, orderRecords)
-
-    textMessage = "以下" + ORDER_NUM + "件の発注が完了しました。\n" +
-      textProdcutsOrderConfirm + "またのご利用をお待ちしております。"
-
-  }
-
-  //再伺いあり、かつ買い物かご情報がある（保険）
-  const reOrderState = (cartInfoArray_doubleOrder.length > 0 || cartInfoArray_doubleCart.length > 0)
-  //console.log(`reOrderState: ${reOrderState}`)
-  if(reOrderState && user.property.CART.length > 0){
-    //STATE_NEWORDER 追加発注確認: false
-    //STATE_CHECK_DELIVERYDAY 納品日チェック不要:0    
-    messagesArray = await module.exports.getCarouselMessage(user, TIMESTAMP, false, 0)
-    textMessage = getReOrderTextMessage(textMessage, cartInfoArray_doubleOrder, cartInfoArray_doubleCart)
-  }
-
-  //テキストメッセージ
-  //条件: テキストメッセージが空欄でない
-  if(textMessage != ""){
-    messagesArray.push(message_JSON.getTextMessage(textMessage));
-  }
-
-  //スタンプメッセージ
-  //条件: 新規発注あり、かつ再発注伺いなし
-  if(ORDER_NUM > 0 && !reOrderState){
-    messagesArray.push(new StampMessage().ありがとう);
-  }  
-  return messagesArray
+    //スタンプメッセージ
+    //条件: 新規発注あり、かつ再発注伺いなし
+    if(ORDER_NUM > 0 && !reOrderState){
+      messagesArray.push(new StampMessage().ありがとう);
+    }
+  
+    console.timeEnd(`発注情報仕分け`)
+    return [messagesArray, orderArrays, plSheets]
+  })
 }

@@ -12,6 +12,7 @@ const Order = require("./Order.js");
 
 const StampMessage = require("./Class Stamp.js");
 
+
 //●単品 発注内容確認
 //STATE_NEWORDER|商品情報をplSheet, productInfoArrayから取得: true、商品情報をDBから取得: false
 //口数チェック|不要
@@ -21,10 +22,10 @@ const StampMessage = require("./Class Stamp.js");
 module.exports.getCarouselMessage = async (postBackData, STATE_NEWORDER = false, STATE_CHECK_DELIVERYDAY = false) => {
   //メッセージ
   let messagesArray = []
-  let card, columns = []
   let textOrderNum = "", textDeliveryday = ""
+  let card, columns = []  
   let bodyContents  = [], imageContents = [], footerContents = []
-  
+
   //商品情報取得
   const [plSheet, productInfoArray] = await Order.getProductsInfo(postBackData)
 
@@ -118,13 +119,13 @@ module.exports.getCarouselMessage = async (postBackData, STATE_NEWORDER = false,
     
     //発注情報 初確認
     if(postBackData.product.orderState == 0){
-      textMessage += "最初は、希望口数1、希望市場納品日は最短納品可能日が指定されています。\n\n「口数」、「納品日」ボタンを押すと、それぞれ変更できます。"
+      //textMessage += "最初は、希望口数1、希望市場納品日は最短納品可能日が指定されています。\n\n「口数」、「納品日」ボタンを押すと、それぞれ変更できます。"
     }
     //2回目以降の発注内容表示にはテキストメッセージ「最初は、～」不要
     else if(postBackData.product.orderState == 2){
       //荷受け日、ブロック日を翌競り日に変更
       if(CHANGE_DELIVERYDAY_STATE){
-        textMessage += "市場納品日は、希望日の翌競り日に修正させていただきました。\nご了承ください。"
+        textMessage += "希望市場納品日は、翌競り日に修正させていただきました。ご了承ください。"
       }      
     }
     //発注情報 確認済み 再発注の際は、事前に納品日を変更済み
@@ -134,7 +135,8 @@ module.exports.getCarouselMessage = async (postBackData, STATE_NEWORDER = false,
       textMessage += "上記商品は同納品日に発注済みです。\n\n再発注でしたら、上の追加発注確定ボタンを押してください。";
     }
     
-    const explainText = "希望商品・口数・納品日を\nご確認ください。\n\n問題なければ下の\n「発注確定」ボタンを押してください。"
+    const explainText = "最初は、希望口数1、希望市場納品日は最短納品可能日が指定されています。\n\n「口数」、「納品日」ボタンを押すと、それぞれ変更できます。\n\n\n" + 
+    "希望商品・口数・納品日を\n確認ください。\n\n問題なければ下の\n「発注確定」ボタンを押してください。"
 
     const label2 = "キャンセル"
     let postdata2 = {
@@ -157,13 +159,19 @@ module.exports.getCarouselMessage = async (postBackData, STATE_NEWORDER = false,
 
 //●単品 発注確定
 module.exports.orderConfirm = async (user, TIMESTAMP, postBackData) => {
-  console.log("")
-  let messagesArray = []
-
   //●前処理
+  //変数定義:メッセージ
+  let messagesArray = []
+  
+  //変数定義:商品リスト情報
+  const plSheets = {}
+  const orderArrays = []
+
+  //発注履歴取得
   const orderRecords = new OrderRecords(user)
   await orderRecords.getUserOrderData()
 
+  //●発注情報 仕分け
   //2重発注確認
   const DOUBLE_ORDER_STATE = await orderRecords.checkOrderRecordTimeStamp(TIMESTAMP, postBackData.product.name) 
   if(DOUBLE_ORDER_STATE){
@@ -200,13 +208,19 @@ module.exports.orderConfirm = async (user, TIMESTAMP, postBackData) => {
     console.log(`--新規発注情報を発注リストに登録`)
     //希望納品日
     const desiredDeliveryday = timeMethod.getDateFmt(postBackData.product.deliveryday, "orderList_deliveryday")
-
+   
     //発注履歴挿入
-    orderRecords.insertOrderRecord([orderRecords.getOrderArray(TIMESTAMP, postBackData, productInfoArray, desiredDeliveryday)])
+    orderArrays.push(orderRecords.getOrderArray(TIMESTAMP, postBackData, productInfoArray, desiredDeliveryday))
+    //user.order.push(orderRecords.getOrderArray(TIMESTAMP, postBackData, productInfoArray, desiredDeliveryday))
+    //user.updateOrderDB()
 
-    //在庫管理
-    plSheet.setNewStock(postBackData.product.productId, postBackData.product.orderNum)
-    
+    //在庫更新 スプレッドシートに反映
+    const newStock = plSheet.setNewStockTofirestore(postBackData.product.productId, postBackData.product.orderNum)
+    plSheets[postBackData.product.sheetId] = {
+      plSheet: plSheet,
+      order: [{pId: postBackData.product.productId, newStock: newStock}]
+    };
+
     //発注完了メッセージ
     const textMessage = "以下1件の発注が完了しました。\n\n" +
     
@@ -220,6 +234,7 @@ module.exports.orderConfirm = async (user, TIMESTAMP, postBackData) => {
     //console.log(`発注完了メッセージ: ${textMessage}`)
     messagesArray.push(message_JSON.getTextMessage(textMessage));
     messagesArray.push(new StampMessage().ありがとう);
+
   }
-  return messagesArray
+  return [messagesArray, orderArrays, plSheets]
 }

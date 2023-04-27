@@ -21,7 +21,7 @@ const message_JSON = require("./module/LINE_Messaging_API/message_JSON.js")
 //TODO: postBackへ移行する
 const message_JSON_irregular = require("./module/LINE_Messaging_API/Irregular.js");
 const Cart = require("./module/LINE_Messaging_API/Cart.js")
-async function branchOfTextMessage(TIMESTAMP_NEW, textMessage, user){  
+const branchOfTextMessage = async (TIMESTAMP_NEW, textMessage, user) => {  
   let messagesArray = []
   if(textMessage == "商品情報リスト表示"){
     messagesArray = await getUpStateAllList(TIMESTAMP_NEW, true)  //買参人用、掲載中, タイムスタンプ
@@ -39,8 +39,8 @@ async function branchOfTextMessage(TIMESTAMP_NEW, textMessage, user){
     //STATE_CHECK_DELIVERYDAY 納品期間チェック: 2
     messagesArray = await Cart.getCarouselMessage(user, TIMESTAMP_NEW, true, 2)
 
-    const textMessage = "最初は、希望口数1、最短納品可能日が指定されています。\n\n「口数」、「納品日」ボタンを押すと、それぞれ変更できます。"
-    messagesArray.push(message_JSON.getTextMessage(textMessage))
+    //const textMessage = "最初は、希望口数1、最短納品可能日が指定されています。\n\n「口数」、「納品日」ボタンを押すと、それぞれ変更できます。"
+    //messagesArray.push(message_JSON.getTextMessage(textMessage))
 
     //リッチメニュー切り替え 保険
     user.setRichMenu()
@@ -88,120 +88,119 @@ const authSecretKey = (CHANNELSECRET, request) => {
 }
 
 //Post受信
-module.exports.helloWorld =  functions
-  .runWith({
-    //timeoutSeconds: 10,
-    minInstances: 1, //インスタンスをwarmスタートに設定 応答速度に影響 コストがかかる  
-    maxInstances: 10,//同時に処理できる最大インスタンス数
-    //memory: "1GB",  //呼び出し回数の無料枠を超えると、コストがかかる。メモリ容量を大きくすると、有料枠の単価が上がる。
-  })
-  .region("asia-northeast1")
-  .https.onRequest(async (request, response) => {
-    try{
-      if (request.method === "POST"){
-        //リクエスト 前処理
-        const events = request.body.events
-        console.log(`events count: ${events.length}`)
+module.exports.helloWorld =  functions.region("asia-northeast1")
+.runWith({
+  //timeoutSeconds: 10,
+  //minInstances: 1, //インスタンスをwarmスタートに設定 応答速度に影響 コストがかかる  
+  maxInstances: 10,//同時に処理できる最大インスタンス数
+  //memory: "1GB",  //呼び出し回数の無料枠を超えると、コストがかかる。メモリ容量を大きくすると、有料枠の単価が上がる。
+}).https.onRequest(async (request, response) => {
+  try{
+    if (request.method === "POST"){
+      //リクエスト 前処理
+      const events = request.body.events
+      console.log(`events count: ${events.length}`)
 
-        //GASからのスプレッドシート更新要請
+      const SECRETS = JSON.parse(await SECRET.getString(process.env.SECRETS_NAME, process.env.SECRETS_VERSION))
+
+      //GASからのリクエスト
+      if(request.headers["x-line-signature"] === null || request.headers["x-line-signature"] === undefined){          
         const GASCODE = await SECRET.getString(process.env.GASCODE_NAME, process.env.GASCODE_VERSION)
-        for(let event of events){
+        return Promise.all(events.map(async (event) => {
           if(event.code == GASCODE){
             if(event.type == "upDateSpreadSheet"){
               if(event.name ==  "productsList"){
                 for(let sheetId of property.productsSheetIds){
-                  await SpreadSheet_API.upDateSpreadSheet_ProductsList(sheetId)
-                }  
-                console.log(`スプレッドシート 商品リスト初期化更新完了`)
+                  await SpreadSheet_API.getProductsList(sheetId, true)
+                }
               }
               else if(event.name ==  "orderList"){
-                await SpreadSheet_API.upDateSpreadSheet_OrderList()
-                console.log(`スプレッドシート 発注リスト初期化更新完了`)
-              }              
+                await SpreadSheet_API.getOrderList(true)
+              }
+            }
+            else if(event.type == "sendTextMessage"){
+              //const messageJSON = message_JSON.getTextMessage(event.data)
+              //axios.sendTextMessageTobuyer(messageJSON)
             }
             else{
               console.error(`不正アクセス`);
-            }
-            return
+            }              
           }
-        }
-
-        //署名確認
-        const SECRETS = JSON.parse(await SECRET.getString(process.env.SECRETS_NAME, process.env.SECRETS_VERSION))
-        if(authSecretKey(SECRETS.CHANNELSECRET, request)){
-          //httpsRequest インスタンス にアクセストークン格納
-          const httpsRequest = new HttpsRequest()
-          httpsRequest.ACCESSTOKEN = SECRETS.ACCESSTOKEN
-          
-          const HACKTEXT = /[`$<>*?!(){};|]/g
-          
-          return Promise.all(events.map(async (event) => {
-            //return events.map(async (event) => {
-            //イベント情報の取得
-            const eventType = event.type
-            console.log(`eventType:${eventType}`)
-            const TIMESTAMP_NEW = event.timestamp
-            console.log(`TIMESTAMP_NEW:${TIMESTAMP_NEW}`)
-            
-            //ユーザー認証
-            const user = new User()
-            user.ID = event.source.userId
-            user.SECRETS = SECRETS
-            user.httpsRequest = httpsRequest
-            
-            await user.authUser()
-            
-            let messagesArray = [];
-            if(eventType == "message"){
-              //メッセージタイプ分岐
-              const messageType = event.message.type
-              console.log(`messageType:${messageType}`)
-              if(messageType == "text"){
-                  const textMessage = event.message.text.replace(HACKTEXT,"") //ハッキング警戒文字列を削除
-                  console.log(`textMessage:${textMessage}`)
-
-                  //文字数制限 ハッキング対策
-                  if(textMessage.length > 50){
-                    messagesArray.push(message_JSON.getTextMessage("恐れ入りますが、個別のメッセージには対応しておりません。\n当社までお電話いただくか窓口にてお問合わせくださいませ。"))
-                  }
-                  else{
-                    messagesArray = await branchOfTextMessage(TIMESTAMP_NEW, textMessage, user)
-                  }
-              }
-              else{
-                messagesArray.push(message_JSON.getTextMessage("恐れ入りますが、個別のメッセージには対応しておりません。\n当社までお電話いただくか窓口にてお問合わせくださいませ。"))
-              }
-            }
-            else if(eventType == "postback"){
-              const postBackData = JSON.parse(event.postback.data.replace(/[`$<>*?!();|]/g,"")); //ハッキング警戒文字列を削除
-              console.log(`postBackData: ${JSON.stringify(postBackData)}`)
-              messagesArray = await branch_postBack.process(event, TIMESTAMP_NEW, postBackData, user)
-            }
-            else if(eventType == "follow"){messagesArray = await user.follow()}
-            else if(eventType == "unfollow"){return user.unfollow()}          
-            else{
-              messagesArray.push(message_JSON.getTextMessage("恐れ入りますが、個別のメッセージには対応しておりません。\n当社までお電話いただくか窓口にてお問合わせくださいませ。"))
-            }            
-            
-            //返信
-            if(messagesArray.length > 0){httpsRequest.replyMessageByAxios(event, messagesArray)}
-            return
-          }))
-        }
-        else{
-          console.error(`signature Error`);
           return
-        }
+        }))
+      }
+
+      //LINEサーバーからのリクエスト
+      else if(authSecretKey(SECRETS.CHANNELSECRET, request)){ //署名確認
+        //httpsRequest インスタンス にアクセストークン格納
+        const httpsRequest = new HttpsRequest()
+        httpsRequest.ACCESSTOKEN = SECRETS.ACCESSTOKEN
         
+        const HACKTEXT = /[`$<>*?!(){};|]/g
+        
+        return Promise.all(events.map(async (event) => {
+          //return events.map(async (event) => {
+          //イベント情報の取得
+          const eventType = event.type
+          console.log(`eventType:${eventType}`)
+          const TIMESTAMP_NEW = event.timestamp
+          console.log(`TIMESTAMP_NEW:${TIMESTAMP_NEW}`)
+          
+          //ユーザー認証
+          const user = new User(event.source.userId)
+          user.httpsRequest = httpsRequest
+          
+          await user.authUser()
+          
+          let messagesArray = [];
+          if(eventType == "message"){
+            //メッセージタイプ分岐
+            const messageType = event.message.type
+            console.log(`messageType:${messageType}`)
+            if(messageType == "text"){
+                const textMessage = event.message.text.replace(HACKTEXT,"") //ハッキング警戒文字列を削除
+                console.log(`textMessage:${textMessage}`)
+
+                //文字数制限 ハッキング対策
+                if(textMessage.length > 50){
+                  messagesArray.push(message_JSON.getTextMessage("恐れ入りますが、個別のメッセージには対応しておりません。\n当社までお電話いただくか窓口にてお問合わせくださいませ。"))
+                }
+                else{
+                  messagesArray = await branchOfTextMessage(TIMESTAMP_NEW, textMessage, user)
+                }
+            }
+            else{
+              messagesArray.push(message_JSON.getTextMessage("恐れ入りますが、任意のメッセージには対応しておりません。\n当社までお電話いただくか窓口にてお問合わせくださいませ。"))
+            }
+          }
+          else if(eventType == "postback"){
+            const postBackData = JSON.parse(event.postback.data.replace(/[`$<>*?!();|]/g,"")); //ハッキング警戒文字列を削除
+            console.log(`postBackData: ${JSON.stringify(postBackData)}`)
+            messagesArray = await branch_postBack.process(event, TIMESTAMP_NEW, postBackData, user)
+          }
+          else if(eventType == "follow"){messagesArray = await user.follow()}
+          else if(eventType == "unfollow"){return user.unfollow()}          
+          else{
+            messagesArray.push(message_JSON.getTextMessage("恐れ入りますが、当メッセージタイプには対応しておりません。"))
+          }            
+          
+          //返信
+          if(messagesArray.length > 0 && messagesArray.length <= 5){httpsRequest.replyMessageByAxios(event, messagesArray)}
+          return
+        }))
       }
       else{
-        return console.error(`NOT POST REQUEST`);
-      }
+        console.error(`signature Error`);
+        return
+      }        
+    } else{ 
+      return console.error(`NOT POST REQUEST`); 
     }
-    catch(e){
-      return console.error(e)      
-    }
-    finally{
-      response.end()
-    }
-  });
+  } 
+  catch(e){
+    return console.error(e)
+  } 
+  finally{
+    response.end()
+  }
+});
