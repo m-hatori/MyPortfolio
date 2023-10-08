@@ -25,7 +25,7 @@ const getDayOfWeek = (date) => {
 
 module.exports.getDateFmt = (unixTime, FMT) => {
   const date = utcToZonedTime(new Date(unixTime), module.exports.TIMEZONE)
-  
+ 
   let conversionDate
   if(FMT == "orderList_deliveryday"){
     //From unixTime or YYYY-MM-DD  To ’yy/MM/dd(DAYOFWEEK)
@@ -34,7 +34,7 @@ module.exports.getDateFmt = (unixTime, FMT) => {
   }
   else{
     //LINE_SYS From unixTime To YYYY-MM-DD
-    //orderList_orderDay  From unitTime To yy/mm/dd hh:mm:ss
+    //orderList_orderDay  From unitTime To 'yy/mm/dd hh:mm:ss
     conversionDate = format(date, dateFmt[FMT], { timeZone: module.exports.TIMEZONE })
   }
   //console.log(`DateFMT ${unixTime} → ${date} → ${conversionDate}`)

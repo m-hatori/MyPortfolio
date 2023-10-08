@@ -4,24 +4,40 @@ const action_JSON = require("./Action_JSON.js");
 const timeMethod = require("../getTime.js");
 
 //●商品カード ボタンあり
-module.exports.getProductCardForBuyer  = (bodyContents, footerContents) => {
+module.exports.getProductCardForBuyer  = (title, bodyContents, footerContents) => {
   return {
     "type": "bubble",
     "size": "kilo",
+    "header": {
+      "type": "box",
+      "layout": "vertical",
+      "spacing": "none",
+      "margin": "none",
+      "paddingAll": "sm",
+      "contents": [
+        {
+          "type": "text",
+          "size": "lg",
+          "align": "center",
+          "adjustMode": "shrink-to-fit",
+          "text": title
+        }
+      ]
+    },
     "body": {
       "type": "box",
       "layout": "vertical",
-      "contents": bodyContents,
       "spacing": "sm",
-      "paddingAll": "none"
+      "paddingAll": "none",
+      "contents": bodyContents,
     },
     "footer": {
       "type": "box",
       "layout": "horizontal",
-      "contents": footerContents,
       "spacing": "sm",
       "paddingAll": "md",
       "justifyContent": "space-evenly",
+      "contents": footerContents,
     },
     "styles": {
       "body": {
@@ -33,148 +49,11 @@ module.exports.getProductCardForBuyer  = (bodyContents, footerContents) => {
     }
   }
 }
-//●TODO: 複数注文  買い物かご  一括納品日変更ボタン付バージョン
-/*
-  module.exports.getCardOrderCertificationForCart = function(label1, postodata1, label2, postdata2, label3, postdata3, sD, eD){
-    return {
-      "type": "bubble",
-      "size": "kilo",    
-      "body": {
-        "type": "box",
-        "layout": "vertical",
-        "contents": [
-          {
-            "type": "box",
-            "layout": "vertical",
-            "contents": [
-              {
-                "type": "button",
-                "action": getPostbackActionWithText(" ", postodata1, label1),
-                "height": "md",
-                "position": "relative",
-                "style": "primary",
-                "color": "#905c44"
-              },
-              {
-                "type": "box",
-                "layout": "vertical",
-                "contents": [
-                  {
-                    "type": "text",
-                    "text": label1,
-                    "align": "center",
-                    "size": "xxl",
-                    "action": getPostbackActionWithText(label1, postodata1, label1),
-                    "color": "#ffffff"
-                  }
-                ],
-                "position": "absolute",
-                "justifyContent": "center",
-                "alignItems": "center",
-                "width": "100%",
-                "height": "100%"
-              }
-            ],
-            "cornerRadius": "xxl",
-            "width": "80%",
-            "justifyContent": "center",
-          },
-          {
-            "type": "box",
-            "layout": "vertical",
-            "contents": [],
-            "height": "15%",
-            "width": "80%"
-          },
-          {
-            "type": "box",
-            "layout": "vertical",
-            "contents": [
-              {
-                "type": "button",
-                "action": getPostbackActionWithText(" ", postdata2, label2),
-                "height": "md",
-                "style": "primary",
-                "color": "#905c44"
-              },
-              {
-                "type": "box",
-                "layout": "vertical",
-                "contents": [
-                  {
-                    "type": "text",
-                    "text": label2,
-                    "align": "center",
-                    "size": "xxl",
-                    "action": getPostbackActionWithText(label2, postdata2, label2),
-                    "color": "#ffffff",
-                    "adjustMode": "shrink-to-fit",
-                    "wrap": true
-
-                  }
-                ],
-                "position": "absolute",
-                "justifyContent": "center",
-                "alignItems": "center",
-                "width": "100%",
-                "height": "100%"
-              }
-            ],
-            "cornerRadius": "xxl",
-            "width": "80%",
-            "justifyContent": "center",
-          },
-          {
-            "type": "box",
-            "layout": "vertical",
-            "contents": [
-              {
-                "type": "button",
-                "action": getPostbackActionWithText(" ", postdata3, label3),
-                "height": "md",
-                "style": "primary",
-                "color": "#905c44"
-              },
-              {
-                "type": "box",
-                "layout": "vertical",
-                "contents": [
-                  {
-                    "type": "text",
-                    "text": label3,
-                    "align": "center",
-                    "size": "xxl",
-                    "action": getdateAction(label3, postdata3, sD, eD) ,
-                    "color": "#ffffff",
-                    "adjustMode": "shrink-to-fit",
-                    "wrap": true
-
-                  }
-                ],
-                "position": "absolute",
-                "justifyContent": "center",
-                "alignItems": "center",
-                "width": "100%",
-                "height": "100%"
-              }
-            ],
-            "cornerRadius": "xxl",
-            "width": "80%",
-            "justifyContent": "center",
-          }        
-        ],
-        "spacing": "md",
-        "paddingAll": "xxl",
-        "justifyContent": "center",
-        "alignItems": "center"
-      }
-    }  
-  }
-*/
-
 //●商品カード 単品注文  発注確定/追加発注確定 キャンセルボタン
 //●商品カード 複数注文  発注確定/追加発注確定 買い物かごリセットボタン
 module.exports.getCardOrderCertification = (explainText, label1, postodata1, label2, postdata2) => {
+  const displaytext = `${label1}\nお待たせする場合がございます。ご了承くださいませ。`
+  //const displaytext = label1
   const footerContents =  [
     {
       "type": "box",
@@ -182,7 +61,7 @@ module.exports.getCardOrderCertification = (explainText, label1, postodata1, lab
       "contents": [
         {
           "type": "button",
-          "action": action_JSON.getPostbackActionWithText(" ", postodata1, label1),
+          "action": action_JSON.getPostbackActionWithText(" ", postodata1, displaytext),
           "height": "md",
           "position": "relative",
           "style": "primary",
@@ -197,7 +76,7 @@ module.exports.getCardOrderCertification = (explainText, label1, postodata1, lab
               "text": label1,
               "align": "center",
               "size": "md",
-              "action": action_JSON.getPostbackActionWithText(label1, postodata1, label1),
+              "action": action_JSON.getPostbackActionWithText(label1, postodata1, displaytext),
               "color": "#ffffff"
             }
           ],
@@ -367,9 +246,8 @@ module.exports.getCardOnlyNegativeBottun = (explainText, label1, postodata1) => 
   }
 }
 
-//●商品カード 部品
-//body 続きはこちら
-module.exports.getProductInfoContinuationCard = (postBackData) =>{
+//カード 前後のリスト表示
+module.exports.getProductInfoContinuationCard = (contents) =>{
   return {
     "type": "bubble",
     "size": "kilo",
@@ -377,20 +255,19 @@ module.exports.getProductInfoContinuationCard = (postBackData) =>{
       "type": "box",
       "layout": "vertical",
       "justifyContent": "center",
-      "action": action_JSON.getPostbackAction("続き", postBackData),
-      "contents": [
-        {
-          "type": "text",
-          "text": "続きはこちら",
-          "size": "xl",          
-          "decoration": "underline",
-          "align": "center"
-        }
-      ]
-    } 
+      "spacing": "xxl",
+      "margin": "sm",
+      "offsetTop": "xs",
+      "offsetBottom": "xs",
+      "offsetStart": "xs",
+      "offsetEnd": "xs",
+      "paddingAll": "xxl",
+      "contents": contents
+    }
   }
 }
 
+//●商品カード 部品
 //body 単品/複数注文 商品カード上部  ラベル
 module.exports.getCardlabel = (imageContents, label) => {
   imageContents.push(
@@ -485,7 +362,7 @@ module.exports.getCardbodyNewIcon = (imageContents, judgeNew) => {
 }
 
 //body 商品情報1 残口
-module.exports.getCardbodyStockNow = function(imageContents, displaytext){
+module.exports.getCardbodyStockNow = (imageContents, displaytext) => {
   imageContents.push(
     {
       "type": "box",
@@ -550,7 +427,7 @@ module.exports.getCardbodyProductInfo2 = (productInfoArray) => {
 }
 
 //body 発注情報
-module.exports.getCardbodyOrdderInfo = function(textOrderNum, textDeliveryday){
+module.exports.getCardbodyOrdderInfo = (textOrderNum, textDeliveryday) => {
   return {
     "type": "box",
     "layout": "vertical",
@@ -579,26 +456,8 @@ module.exports.getCardbodyOrdderInfo = function(textOrderNum, textDeliveryday){
   }
 }
 
-//fotter ボタン
-module.exports.getCardfooterBottun = function(label, textMessage, postBackData) {
-  return {
-    "type": "box",
-    "layout": "vertical",
-    "contents": [
-      {
-        "type": "button",
-        "style": "primary",
-        "action": action_JSON.getPostbackActionWithText(label, postBackData, textMessage),
-        "height": "sm",
-        "color": "#905c44",
-      }
-    ],
-    "cornerRadius": "xxl",
-  }
-}
-
 //fotter ボタン テキスト送信あり
-module.exports.getCardfooterBottunWithText = function(label, postBackData, textMessage) {
+module.exports.getCardfooterBottunWithText = (label, postBackData, textMessage) => {
   return {
     "type": "box",
     "layout": "vertical",
@@ -616,7 +475,8 @@ module.exports.getCardfooterBottunWithText = function(label, postBackData, textM
 }
 
 //fotter ボタン テキスト送信なし
-module.exports.getCardfooterBottunWithoutText = function(label, postBackData) {
+/*
+module.exports.getCardfooterBottunWithoutText = (label, postBackData) => {
   return {
     "type": "box",
     "layout": "vertical",
@@ -632,9 +492,10 @@ module.exports.getCardfooterBottunWithoutText = function(label, postBackData) {
     "cornerRadius": "xxl",
   }
 }
+*/
 
 //fotter ボタン 横幅指定
-module.exports.getCardfooterBottunWidth = function(label, textMessage, postBackData, width) {
+module.exports.getCardfooterBottunWidth = (label, textMessage, postBackData, width) => {
   return {
     "type": "box",
     "layout": "vertical",
@@ -653,7 +514,7 @@ module.exports.getCardfooterBottunWidth = function(label, textMessage, postBackD
 }
 
 //fotter 納品日ボタン
-module.exports.getCardfooterDeliverydayBottun = function(label, postBackData, productInfoArray){
+module.exports.getCardfooterDeliverydayBottun = (label, postBackData, productInfoArray) => {
   const SD_FMT_LINE = timeMethod.getDateFmt(productInfoArray[property.constPL.columns.sDeliveryday]._seconds*1000, "LINE_SYS")
   const ED_FMT_LINE = timeMethod.getDateFmt(productInfoArray[property.constPL.columns.eDeliveryday]._seconds*1000, "LINE_SYS")
   //console.log(`納品日ボタン 納品開始日: ${SD_FMT_LINE} 納品終了日: ${ED_FMT_LINE}`)

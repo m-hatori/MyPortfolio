@@ -11,25 +11,25 @@ module.exports.getPostbackAction = (label, postBackData) => {
 //●ポストバックアクション displayText付 リッチメニューを開く
 module.exports.getPostbackActionWithText = (label, postBackData, displayText) => {
   return {
- "type": "postback",
- "label": label,
- "data": JSON.stringify(postBackData),
- "displayText":displayText,
- "inputOption": "openRichMenu",
+    "type": "postback",
+    "label": label,
+    "data": JSON.stringify(postBackData),
+    "displayText": displayText,
+    "inputOption": "openRichMenu",
   }
 }
 
 //●日付
 module.exports.getdateAction = (label, postBackData, sD, eD) => {
- return {
-  "type": "datetimepicker",
-  "label": label,
-  "data": JSON.stringify(postBackData),
-  "mode": "date",
-  "initial" : sD,
-  "min" : sD,
-  "max" : eD,
- }
+  return {
+    "type": "datetimepicker",
+    "mode": "date",
+    "label": label,
+    "initial" : sD,
+    "min" : sD,
+    "max" : eD,
+    "data": JSON.stringify(postBackData),
+  }
 }
 
 //●URL

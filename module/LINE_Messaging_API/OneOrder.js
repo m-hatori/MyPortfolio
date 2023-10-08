@@ -3,6 +3,7 @@
 const property = require("../property.js");
 const timeMethod = require("../getTime.js");
 
+const Products = require("../class ProductsList.js");
 const OrderRecords = require("../class OrdersList.js");
 
 const message_JSON = require("./message_JSON.js");
@@ -42,13 +43,14 @@ module.exports.getCarouselMessage = async (postBackData, STATE_NEWORDER = false,
     textDeliveryday = "-"
     
     //●メッセージ1 商品カード
-    imageContents = flexMessage_ForBuyer.getCardlabel(imageContents, "発注内容")  //上部ラベル
+    let title = "発注内容"
+    //imageContents = flexMessage_ForBuyer.getCardlabel(imageContents, "発注内容")  //上部ラベル
 
     bodyContents.push(flexMessage_ForBuyer.getCardbodyProductInfo1(flexMessage_ForBuyer.getCardPicURL(process.env.PICURL_SOLDOUT), imageContents))//商品情報１  上部ラベル、商品画像、残口
     bodyContents.push(flexMessage_ForBuyer.getCardbodyProductInfo2(productInfoArray))//商品情報2   商品名～市場納品期間
     bodyContents.push(flexMessage_ForBuyer.getCardbodyOrdderInfo(textOrderNum, textDeliveryday))  //発注情報
 
-    card = flexMessage_ForBuyer.getProductCardForBuyer(bodyContents, footerContents)
+    card = flexMessage_ForBuyer.getProductCardForBuyer(title, bodyContents, footerContents)
     columns.push(card)
     messagesArray.push(message_JSON.getflexCarouselMessage("発注内容", columns))
 
@@ -76,7 +78,8 @@ module.exports.getCarouselMessage = async (postBackData, STATE_NEWORDER = false,
     
     //●メッセージ1 商品カード
     //body
-    imageContents = flexMessage_ForBuyer.getCardlabel(imageContents, "発注内容")  //上部ラベル  
+    //imageContents = flexMessage_ForBuyer.getCardlabel(imageContents, "発注内容")  //上部ラベル  
+    let title = "発注内容"
     imageContents = flexMessage_ForBuyer.getCardbodyStockNow(imageContents, `残${StockNow}口`)  //残口
     const picUrl = flexMessage_ForBuyer.getCardPicURL(productInfoArray[property.constPL.columns.picUrl])
     bodyContents.push(flexMessage_ForBuyer.getCardbodyProductInfo1(picUrl, imageContents))//商品情報１  上部ラベル、商品画像、残口
@@ -94,14 +97,14 @@ module.exports.getCarouselMessage = async (postBackData, STATE_NEWORDER = false,
     let postBackData_selectOrderNum = postBackData_base
     postBackData_selectOrderNum.command = "selectOrderNum"
     //console.log(`postBackData_selectOrderNum: ${JSON.stringify(postBackData_selectOrderNum)}`)
-    footerContents.push(flexMessage_ForBuyer.getCardfooterBottun("口数", "口数変更", postBackData_selectOrderNum))
+    footerContents.push(flexMessage_ForBuyer.getCardfooterBottunWithText("口数", postBackData_selectOrderNum, "口数変更"))
 
     let postBackData_setDeliveryday = postBackData_base
     postBackData_setDeliveryday.command = "setDeliveryday"
     //console.log(`postBackData_setDeliveryday: ${JSON.stringify(postBackData_setDeliveryday)}`)
     
     footerContents.push(flexMessage_ForBuyer.getCardfooterDeliverydayBottun("納品日", postBackData_setDeliveryday, productInfoArray))
-    card = flexMessage_ForBuyer.getProductCardForBuyer(bodyContents, footerContents)
+    card = flexMessage_ForBuyer.getProductCardForBuyer(title, bodyContents, footerContents)
     columns.push(card)
 
     //●右端カード
@@ -125,7 +128,7 @@ module.exports.getCarouselMessage = async (postBackData, STATE_NEWORDER = false,
     else if(postBackData.product.orderState == 2){
       //荷受け日、ブロック日を翌競り日に変更
       if(CHANGE_DELIVERYDAY_STATE){
-        textMessage += "希望市場納品日は、翌競り日に修正させていただきました。ご了承ください。"
+        textMessage += "翌競り日に修正させていただきました。ご了承ください。"
       }      
     }
     //発注情報 確認済み 再発注の際は、事前に納品日を変更済み
@@ -158,7 +161,7 @@ module.exports.getCarouselMessage = async (postBackData, STATE_NEWORDER = false,
 }
 
 //●単品 発注確定
-module.exports.orderConfirm = async (user, TIMESTAMP, postBackData) => {
+module.exports.orderConfirm = async (TIMESTAMP_NEW, user, postBackData_timeStamp, postBackData) => {
   //●前処理
   //変数定義:メッセージ
   let messagesArray = []
@@ -169,15 +172,13 @@ module.exports.orderConfirm = async (user, TIMESTAMP, postBackData) => {
 
   //発注履歴取得
   const orderRecords = new OrderRecords(user)
-  await orderRecords.getUserOrderData()
+  await orderRecords.getDB()
 
-  //●発注情報 仕分け
-  //2重発注確認
-  const DOUBLE_ORDER_STATE = await orderRecords.checkOrderRecordTimeStamp(TIMESTAMP, postBackData.product.name) 
+  //発注確定ボタン 2度押し確認
+  const DOUBLE_ORDER_STATE = await orderRecords.checkOrderRecordTimeStamp(postBackData_timeStamp, postBackData.product.name)
   if(DOUBLE_ORDER_STATE){
-    console.error(`--エラー ダブルオーダー`)
-    messagesArray.unshift(message_JSON.getTextMessage("当発注手続きは完了済みです。\nメインメニューから手続きをやり直してください。"))
-    return messagesArray
+    messagesArray.unshift(message_JSON.getTextMessage("発注手続き済みです"))
+    return [messagesArray, orderArrays, plSheets]
   }
   
   //posaBackDataから商品リストの情報を取得
@@ -190,7 +191,7 @@ module.exports.orderConfirm = async (user, TIMESTAMP, postBackData) => {
   
   if(STOCKNOW <= 0){
     messagesArray = Irregular.whenStockNone()
-    return messagesArray
+    return [messagesArray, orderArrays, plSheets]
   }
 
   //●発注情報 仕分け
@@ -210,25 +211,24 @@ module.exports.orderConfirm = async (user, TIMESTAMP, postBackData) => {
     const desiredDeliveryday = timeMethod.getDateFmt(postBackData.product.deliveryday, "orderList_deliveryday")
    
     //発注履歴挿入
-    orderArrays.push(orderRecords.getOrderArray(TIMESTAMP, postBackData, productInfoArray, desiredDeliveryday))
-    //user.order.push(orderRecords.getOrderArray(TIMESTAMP, postBackData, productInfoArray, desiredDeliveryday))
+    orderArrays.push(orderRecords.getOrderArray(postBackData_timeStamp, postBackData, productInfoArray, desiredDeliveryday))
+    //user.order.push(orderRecords.getOrderArray(postBackData_timeStamp, postBackData, productInfoArray, desiredDeliveryday))
     //user.updateOrderDB()
 
     //在庫更新 スプレッドシートに反映
-    const newStock = plSheet.setNewStockTofirestore(postBackData.product.productId, postBackData.product.orderNum)
+    const newStock = await plSheet.getNewStock(postBackData.product.productId, postBackData.product.orderNum)
     plSheets[postBackData.product.sheetId] = {
       plSheet: plSheet,
-      order: [{pId: postBackData.product.productId, newStock: newStock}]
+      order: [{pId: postBackData.product.productId, productName: postBackData.product.name, newStock: newStock}]
     };
 
     //発注完了メッセージ
-    const textMessage = "以下1件の発注が完了しました。\n\n" +
-    
-    "●" + postBackData.product.name + "\n" +
+    const textMessage = "●" + postBackData.product.name + "\n" +
     postBackData.product.norm + "\n" +
     "希望口数: " + postBackData.product.orderNum + "\n" +
     "希望納品日: " + desiredDeliveryday + "\n\n" +
     
+    "以上1件の発注が完了しました。\n\n" +
     "またのご利用をお待ちしております。"
     
     //console.log(`発注完了メッセージ: ${textMessage}`)

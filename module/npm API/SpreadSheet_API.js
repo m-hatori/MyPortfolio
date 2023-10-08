@@ -1,10 +1,16 @@
 /* eslint-disable one-var */
+const functions = require('firebase-functions');
+const logger = functions.logger
 
 //●●●スプレッドシート API●●●
 const {GoogleSpreadsheet} = require("google-spreadsheet");  
-const property = require("../property.js");
-
 const AsyncLock = require(`async-lock`);
+
+const property = require("../property.js");
+const SECRET = require("./secret.js");
+
+const max_retryTime = 5 //再試行最大回数
+const retryDelayTime = 100 //再試行遅延時間 ms
 
 //排他制御
 const lock = new AsyncLock({
@@ -15,215 +21,151 @@ const lock = new AsyncLock({
 });
 
 //初期化
-const initializeSpreadsheet = async (SSID) => {
-  const doc = new GoogleSpreadsheet(SSID)
+const initializeSpreadsheet = async (SSID, retryTime = 1) => {
+  const func_content = "-SpreadSheet 初期化"
+  try {
+    logger.log(`${func_content} 開始 ${retryTime}回目`)
+    
+    const creds = JSON.parse(await SECRET.getString(process.env.SPREADSHHET_SEVICE_ACCOUNT_NAME, process.env.SPREADSHHET_SEVICE_ACCOUNT_VERSION))    
+    const doc = new GoogleSpreadsheet(SSID)
+    await doc.useServiceAccountAuth(creds)   
+    logger.log(`${func_content} サービスアカウント 認証完了`)
+    
+    //ドキュメントロード
+    await doc.loadInfo()
+    logger.log(`${func_content} ${doc.title} ドキュメントロード 完了`)    
+    return doc
+  } catch (err) {
+    logger.warn(`${func_content} ${retryTime}回目 エラー`)
 
-  //??
-  const SECRET = require("./secret.js");
-  const creds = JSON.parse(await SECRET.getString(process.env.SPREADSHHET_SEVICE_ACCOUNT_NAME, process.env.SPREADSHHET_SEVICE_ACCOUNT_VERSION))
-  await doc.useServiceAccountAuth(creds)
+    if (retryTime == max_retryTime) throw err  //再試行終了
 
-  //ボリュームとしてマウント 未実施
-  //const fs = require('fs')
-  //const creds = JSON.parse(fs.readFileSync("./etc/secret/ss_sa", 'utf8'))
-  //await doc.useServiceAccountAuth(creds)
-
-  //環境変数 できない
-  //await doc.useServiceAccountAuth({
-  //   client_email: process.env.SPREADSHEET_SERVICE_ACCOUNT_EMAIL,
-  //  private_key: process.env.SPREADSHEET_PRIVATE_KEY,
-  //});
-
-  await doc.loadInfo()
-  console.log(`★${doc.title} 初期化完了`)
-  return doc
-}
-
-//キャッシュ
-module.exports.productsList ={
-  doc: null,
-  /*
-  sheetId:{
-    sheet: null,
-    vals: null
+    //再試行
+    await new Promise(resolve => setTimeout(resolve, retryDelayTime)); //待機
+    return await initializeSpreadsheet(SSID, retryTime + 1);
   }
-  */
-};
-
+}
 
 //商品リスト 取得
-module.exports.getProductsList = async (sheetId, state) => {
-  const key = "商品リスト 取得"
-  return await lock.acquire(key, async () => {
-    console.log(`${key} Lock Function Start`);
-    let doc, sheet
-    //スプレッドシートドキュメント 初期化
-    if(module.exports.productsList.doc === null){
-      //module.exports.productsList.doc = await initializeSpreadsheet(process.env.SPREADSHEETID_PRODUCTS)
-      doc = await initializeSpreadsheet(process.env.SPREADSHEETID_PRODUCTS)
-      //キャッシュ保存
-      module.exports.productsList.doc = doc
-    }
-    else{
-      doc = module.exports.productsList.doc
-    }    
+const getProductsList = async (productsList_doc, sheetId, retryTime = 1) => {
+  const func_content = `-商品リスト ${property.sheetNumber[sheetId]}`
+  try {
+    logger.log(`${func_content} 取得開始 ${retryTime}回目`)
 
     //シート取得
-    if( module.exports.productsList[sheetId] === undefined || state){
-
-      //シート取得
-      sheet = doc.sheetsById[sheetId]
+    const sheet = productsList_doc.sheetsById[sheetId]
       
-      //ヘッダー行ロード
-      await sheet.loadHeaderRow(property.constPL.headersRow);
-      
-      //セルロード
-      const range_stockNow = "O3:O22"
-      await sheet.loadCells(range_stockNow)    
-      console.log(`シート: ${sheet.title} ロード完了`)
+    //ヘッダー行ロード
+    await sheet.loadHeaderRow(property.constPL.headersRow);
+    
+    //セルロード
+    const range_stockNow = "O3:O22"
+    await sheet.loadCells(range_stockNow)    
+    logger.log(`${func_content} | シート: ${sheet.title} ロード完了`)
 
-      //キャッシュ保存      
-      module.exports.productsList[sheetId] ={ sheet: sheet }
-    }
-    else{
-      sheet = module.exports.productsList[sheetId].sheet
-    }
-    console.log(`シート: ${sheet.title} 取得完了`)
-    console.log(`${key} Lock Function End`);
+    logger.log(`${func_content} 取得完了`)
     return sheet
-  });
-}
-
-//スプレッドシート 単品在庫更新
-//新規在庫 NEWSTOCK: firestoreに書き込んだ値を使い、整合性を保つ
-const setNewStockToSpreadSheet = async (sheet, productId, NEWSTOCK) => {
-  //更新行
-  const ROW = Number(property.constPL.sRow) + Number(productId) - 1
-
-  //セル操作
-  const CELL_STOCKNOW = sheet.getCell(ROW, property.constPL.columns.stockNow)
-  CELL_STOCKNOW.value = NEWSTOCK
-  console.log(`シート: ${sheet.title} 値入力`)
-  return
-}
-
-//スプレッドシート 商品リスト 複数更新
-module.exports.setNewStocksToSpreadSheet = async (plSheets) => {
-  const ps = []
-  const key = "商品リスト 在庫更新"
-  for(let sheetId of property.productsSheetIds){
-    if((plSheets[sheetId] !== undefined) &&
-        JSON.stringify(plSheets[sheetId].order) != JSON.stringify([])
-    ){
-      //シート取得
-      const sheet = await module.exports.getProductsList(sheetId, true)
-
-      return await lock.acquire(key, async () => {
-        console.log(`${key} Lock Function Start`);
+  } catch (err) {
+    logger.warn(`${func_content} ${retryTime}回目 エラー`)
         
-        //値埋め込み
-        const p = []
-        for(let buff of plSheets[sheetId].order){
-          p.push(setNewStockToSpreadSheet(sheet, buff.pId, buff.newStock))
-        }
-
-        //スプレッドシート更新
-        if(p.length > 0){
-          await Promise.all(p)
-          ps.push(sheet.saveUpdatedCells()); // save all updates in one call
-          console.log(`シート: ${sheet.title} 更新`)
-        }
-
-        console.log(`${key} Lock Function End`);
-      });
-    }
+    if (retryTime == max_retryTime) throw err  //再試行終了
+    
+    //再試行
+    await new Promise(resolve => setTimeout(resolve, retryDelayTime)); //待機    
+    return await getProductsList(productsList_doc, sheetId, retryTime + 1);
   }
-
-  await Promise.all(ps)
-  return
 }
 
+//スプレッドシート 商品リスト 現在庫更新
+const setNewStocksToSpreadSheet = async (productsList_doc, plSheets, retryTime = 1) => {
+  const func_content = "-商品リスト 現在庫登録"
+  try{
+    logger.log(`${func_content} 開始 ${retryTime}回目`)
+    for(let sheetId in plSheets){      
+      //シート取得
+      const sheet = await getProductsList(productsList_doc, sheetId)
 
-module.exports.orderList = {
-  doc: null,
-  /*
-  sheetId:{
-    sheet: null,
-    vals: null
+      //値埋め込み
+      for(let buff of plSheets[sheetId].order){
+        //更新行
+        let ROW = Number(property.constPL.sRow) + Number(buff.pId) - 1
+
+        //セル操作
+        sheet.getCell(ROW, property.constPL.columns.stockNow).value = buff.newStock
+        logger.log(`--行 ${ROW} 現在庫 ${buff.newStock} 入力`)
+      }
+
+      //スプレッドシート更新
+      await sheet.saveUpdatedCells(); // save all updates in one call
+      logger.log(`--シート: ${sheet.title} 更新`)      
+    }
+
+    return logger.log(`${func_content} 完了`)    
+  } catch (err) {
+    logger.warn(`${func_content} ${retryTime}回目 エラー`)
+
+    if (retryTime == max_retryTime) throw err  //再試行終了
+    
+    //再試行
+    await new Promise(resolve => setTimeout(resolve, retryDelayTime)); //待機
+    return await setNewStocksToSpreadSheet(productsList_doc, plSheets, retryTime + 1);
   }
-  */
-};
+}
 
-//発注情報取得
-const getOrderList = async (state) => {
-  const key = "発注情報取得"
+//商品リストアクセス
+module.exports.accessProductsList = async (command, sheetId, plSheets) =>{
+  const key = "商品リスト操作"
   return await lock.acquire(key, async () => {
-    console.log(`${key} Lock Function Start`);
-    let doc
+    logger.log(`★${key} 開始`)
 
-    //スプレッドシートドキュメント 初期化
-    if(module.exports.orderList.doc === null){
-      doc = await initializeSpreadsheet(process.env.SPREADSHEETID_ORDER)
-      module.exports.orderList.doc = doc
+    //初期化
+    const productsList_doc = await initializeSpreadsheet(process.env.SPREADSHEETID_PRODUCTS)      
+
+    if(command == "get"){
+      await getProductsList(productsList_doc, sheetId)
     }
-    else{
-      doc = module.exports.orderList.doc
+    else if(command == "setNewStock"){
+      await setNewStocksToSpreadSheet(productsList_doc, plSheets)
     }
+    return logger.log(`★${key} 完了`)    
+  })
+}
+
+//シート取得
+const getOrderList = async (orderList_doc, retryTime = 1) => {
+  const func_content = `-発注リスト取得`
+  try {
+    logger.log(`${func_content} 開始 ${retryTime}回目`)
 
     //シート取得
-    const sheetId = 0
-    let sheet, vals
-    if( module.exports.orderList[sheetId] === undefined || state){
+    const sheet = await orderList_doc.sheetsById[0]
+    
+    //行ロード
+    const vals = await sheet.getRows()
+    logger.log(`--全発注件数: ${vals.length}`)
 
-      //シート取得
-      sheet = doc.sheetsById[sheetId]
-      
-      //行ロード
-      vals = await sheet.getRows()      
-
-      //キャッシュ保存
-      module.exports.orderList[sheetId] = {
-        sheet: sheet,
-        vals: vals
-      }
-    }
-    else{
-      vals = module.exports.orderList[sheetId].vals
-    }
-
-    console.log(`--全発注件数: ${vals.length}`)
-    console.log(`${key} Lock Function End`);
-    return vals
-  });
+    logger.log(`${func_content} 完了`)
+    return [sheet, vals]
+  } catch (err) {
+    logger.warn(`${func_content} ${retryTime}回目 エラー`)
+    
+    if (retryTime == max_retryTime) throw err
+    await new Promise(resolve => setTimeout(resolve, retryDelayTime)); //待機
+    return await getOrderList(orderList_doc, retryTime + 1);
+  }
 }
 
 //発注情報挿入
-module.exports.insertOrderRecord = async (ordersArray) => {
-  const key = "発注情報挿入"
-  return await lock.acquire(key, async () => {
-    console.log(`${key} Lock Function Start`);
-
-    //スプレッドシートドキュメント 初期化
-    let doc
-    if(module.exports.orderList.doc === null){
-      doc = await initializeSpreadsheet(process.env.SPREADSHEETID_ORDER)
-      module.exports.orderList.doc = doc
-    }
-    else{
-      doc = module.exports.orderList.doc
-    }
-
+const insertOrderRecord = async (orderList_doc, ordersArray, retryTime = 1) => {
+  const func_content = "-SpreadSheet 発注情報登録"
+  try {
+    logger.log(`${func_content} 開始 ${retryTime}回目`)
     //シート取得
-    const sheetId = 0    
-    const sheet = doc.sheetsById[sheetId]
-    
-    //行ロード
-    let vals = await sheet.getRows()
-    console.log(`--全発注件数: ${vals.length}`)
+    const [sheet, vals] = await getOrderList(orderList_doc)
     
     const STARTINDEX = property.constOL.sRow + 1 //挿入始端行 0(1行目), 1(2行目), 2(3行目)....
     const ENDINDEX = ordersArray.length + STARTINDEX  //挿入終端行 挿入始端行＋挿入行数
-    console.log(`-発注リストへ登録 挿入始端行 : ${STARTINDEX}   挿入終端行 : ${ENDINDEX}`)
+    logger.log(`--発注リストへ登録 挿入始端行 : ${STARTINDEX}   挿入終端行 : ${ENDINDEX}`)
     
     //空白行を挿入
     await sheet.insertDimension(
@@ -234,44 +176,48 @@ module.exports.insertOrderRecord = async (ordersArray) => {
       },
       false
     )
-    console.log(`--空白行を挿入`)
+    logger.log(`--空白行を挿入`)
     
     //値を入力 保存
     const p = []
     for(let i = 0; i < ordersArray.length; i++){
       vals[i]._rawData = await ordersArray[i]
-      p.push(vals[i].save({raw : false}))
+      await vals[i].save({raw : false})
     }
-    console.log(`--値入力`)
+    logger.log(`--値入力`)
 
-    //スプレッドシート キャッシュの更新
-    await Promise.all(p)
-    vals = await sheet.getRows()
-    console.log(`--全発注件数: ${vals.length}`)
-
-    //キャッシュ保存
-    module.exports.orderList[sheetId] = {
-      sheet: sheet,
-      vals: vals
-    }
-    console.log(`${key} Lock Function End`);
+    logger.log(`${func_content} 完了`)
     return
-  })
+
+  } catch (err) {
+    logger.warn(`${func_content} ${retryTime}回目 エラー`)
+    
+    if (retryTime == max_retryTime) throw err  //再試行終了
+
+    //再試行
+    await new Promise(resolve => setTimeout(resolve, retryDelayTime)); //待機
+    return await insertOrderRecord(orderList_doc, ordersArray, retryTime + 1);
+  }
 }
 
-module.exports.accessProductsList = async (sheetId, command) =>{
-
-}
-
-module.exports.accessOrderList = async (command, state, ordersArray) =>{
-  const key = "発注情報取得"
+//発注リストアクセス
+module.exports.accessOrderList = async (command, ordersArray) =>{
+  const key = "発注リスト操作"    
   return await lock.acquire(key, async () => {
+    logger.log(`★${key} 開始`)
+
+    //初期化
+    const orderList_doc = await initializeSpreadsheet(process.env.SPREADSHEETID_ORDER)  
+
+    //発注情報取得
     if(command == "get"){
-      return await getOrderList(state)
-      
+      await getOrderList(orderList_doc)
     }
-    else if( command == "insertOrder"){
-      return await getOrderList(state)    
-    }    
+    //発注情報挿入
+    else if(command == "insertOrder"){      
+      await insertOrderRecord(orderList_doc, ordersArray)
+    }
+    logger.log(`★${key} 完了`)
+    return
   })
 }

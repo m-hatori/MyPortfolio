@@ -2,28 +2,29 @@
 
 /* eslint-disable one-var */
 const property = require("../property.js");
-const timeMethod = require("../getTime.js");
-const { zonedTimeToUtc } = require('date-fns-tz')
 
 const Products = require("../class ProductsList.js");
-const SpreadSheet_API = require("../npm API/SpreadSheet_API.js");
 
 const action_JSON = require("./Action_JSON.js");
 const Irregular = require("./Irregular.js");
+
+const FireStore_API = require("./module/npm API/FireStore_API.js");
+const SpreadSheet_API = require("./module/npm API/SpreadSheet_API.js");
 
 
 //●商品情報取得
 module.exports.getProductsInfo = async (postBackData) => {
   //同一商品IDの商品情報を抽出
   const plSheet = new Products(postBackData.product.sheetId) 
+  await plSheet.getDB()
   const productInfoArray = await plSheet.plSheetVals[postBackData.product.productId]
-  //console.log(`productInfoArray: ${JSON.stringify(productInfoArray)}`)
+  console.log(`productInfoArray: ${JSON.stringify(productInfoArray)}`)
+
   if(productInfoArray === undefined){
     console.log(`シートID : ${postBackData.product.sheetId} 商品ID : ${postBackData.product.productId}`)
     throw new Error("商品マスタ情報に問題があります。")
   }
   else{
-    //console.log(`--return plSheet`)
     return [plSheet, productInfoArray]
   }  
 }
@@ -83,12 +84,10 @@ module.exports.selectOrderNum = async (postBackData) => {
 
 //●希望納品日 yyyy-MM-DD → unixTime
 module.exports.getUnixTimeFMDeliveryday = (deliveryday) => {
-  let newDate = new Date(deliveryday)
-  console.log(newDate)
-  
+  const newDate = new Date(deliveryday)
+    
   //UTC時刻にして納品期間確認に備える
-  const newDeliveryday_uxniTime = newDate.getTime() - 9*60*60*1000//日本時刻9時間分を引く
-  
+  const newDeliveryday_uxniTime = newDate.getTime() - 9*60*60*1000//日本時刻9時間分を引く  
   
   console.log(`---希望納品日: ${newDate}  unixTime: ${newDeliveryday_uxniTime}`)
   return newDeliveryday_uxniTime
@@ -107,14 +106,21 @@ module.exports.chechkTextDeliveryday = (deliveryday) => {
   }
 }
 
-//発注情報記入
-module.exports.setOrderInfo = async (orderArrays, plSheets) =>{
-  if(orderArrays.length > 0){
-    //在庫更新 スプレッドシートに反映
-    await SpreadSheet_API.setNewStocksToSpreadSheet(plSheets);
+//発注情報 書き込み
+module.exports.setOrderInfo = async (event, messagesArray, user, orderArrays, plSheets) => {  
+  await user.httpsRequest.replyMessageByAxios(event, messagesArray)
 
-    //発注履歴追加 firestore
-    await SpreadSheet_API.insertOrderRecord(orderArrays);
+  if(orderArrays.length > 0 && user.ID != "" && plSheets !== null){
+    //在庫更新
+    await FireStore_API.accessFirestore("setNewStock", "", plSheets);
+    
+    //新規発注情報追加
+    await FireStore_API.accessFirestore("insertOrder", "", "", user.ID, orderArrays);
+    
+    //商品リスト 在庫更新
+    await SpreadSheet_API.accessProductsList("setNewStock", "", plSheets, dbData);
+
+    //発注リスト 新規発注情報追加
+    await SpreadSheet_API.accessOrderList("insertOrder", orderArrays, dbData);
   }
-  return
 }
