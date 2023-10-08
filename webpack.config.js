@@ -33,7 +33,7 @@ module.exports.default = {
   },
 	plugins: [
 		new webpack.BannerPlugin({
-			banner:"//license: kounosukaki" + "\n" + "//codeing: Masafumi Hatori <masamasayahoo@gamil.com>" + "\n//" + DATE,
+			banner:"//codeing: Masafumi Hatori <masamasayahoo@gamil.com>" + "\n//" + DATE,
       raw:true
 		})
 	]
