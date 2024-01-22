@@ -1,12 +1,16 @@
 # MyPortfolio
 LINE公式アカウント上で動作するチャットBotです。
 
+
 # 主な機能
 ・商品情報表示
 
 ・商品発注手続き
 
 ・買い物かご
+
+# システム概念図
+![Screenshot of a comment on a GitHub issue showing an image, added in the Markdown, of an Octocat smiling and raising a tentacle.](https://github.com/m-hatori/MyPortfolio/blob/main/System_diagram.png)
 
 # 環境
 **フロントエンド（プログラムは未掲載）**
