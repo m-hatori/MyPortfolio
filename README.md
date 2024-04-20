@@ -14,32 +14,34 @@ LINE公式アカウント上で動作するチャットBotです。
   
 # 環境
 **フロントエンド（プログラムは未掲載）**
+
 Google apps Script(javascriptベース)
   
 LINE Front-end Framework（LIFF）
   
   
 **バックエンド**
+
 Node.js  
   
 **インフラ**
+
 firebase
   
 Googleスプレッドシート  
   
 **API**
+
 LINE Messaging API  
   
 # 主なパッケージ
 **コーディング補助**
 
 eslint@8.29.0
-
     
 **モジュール化**
 
 webpack@5.75.0
-
 
 **DBアクセス制御**
 
