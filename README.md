@@ -21,20 +21,14 @@ LINE Front-end Framework（LIFF）
 
 
 **バックエンド**
-
-Node.js
-
+Node.js  
 
 **インフラ**
-
 firebase
-
-Googleスプレッドシート
-
+Googleスプレッドシート  
 
 **API**
-
-LINE Messaging API
+LINE Messaging API  
 
 # 主なパッケージ
 **コーディング補助**
