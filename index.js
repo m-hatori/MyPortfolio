@@ -16,7 +16,7 @@ const FireStore_API = require("./module/npm API/FireStore_API.js");
 const message_JSON = require("./module/LINE_Messaging_API/message_JSON.js")
 
 //●テキストメッセージ処理分岐
-//TODO: postBackへ移行するためにリッチメニューを作り直す
+//TODO: セキュリティのためpostBackへ移行するためにリッチメニューを作り直す
 const message_JSON_irregular = require("./module/LINE_Messaging_API/Irregular.js");
 const Cart = require("./module/LINE_Messaging_API/Cart.js")
 const branchOfTextMessage = async (TIMESTAMP_NEW, textMessage, user) => {  

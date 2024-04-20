@@ -103,7 +103,6 @@ const getIndex = async (user, postBackData) => {
 }
 
 //ポストバック処理分岐
-//TODO: ケース別に最終的にトーク画面に表示する情報を最適化
 module.exports.process = async (event, TIMESTAMP_NEW, user, postBackData) => {
   //●共通前処理  
   let CONSOLE_STATE = "branch_postBack_process"
@@ -153,16 +152,6 @@ module.exports.process = async (event, TIMESTAMP_NEW, user, postBackData) => {
     messagesArray = await new Products(postBackData.product.sheetId).getAllproductInfo(postBackData, TIMESTAMP_NEW, lineNum)
   }
   else{
-    //TODO: 商品リスト一覧表示
-    /*
-    if(TAG == "allList"){
-      let lineNum = true
-      if(COMMAND == "continuation"){ lineNum = false }
-      messagesArray = await getUpStateAllList(TIMESTAMP_NEW, lineNum)      
-    }
-    */
-
-    
     //制限時間内の情報からのアクションか確認
     let timeError
     [timeError, messagesArray] = await checkTimeStamp(postBackData_timeStamp, TIMESTAMP_NEW, TAG, user)    

@@ -49,6 +49,7 @@ module.exports.getProductCardForBuyer  = (title, bodyContents, footerContents) =
     }
   }
 }
+
 //●商品カード 単品注文  発注確定/追加発注確定 キャンセルボタン
 //●商品カード 複数注文  発注確定/追加発注確定 買い物かごリセットボタン
 module.exports.getCardOrderCertification = (explainText, label1, postodata1, label2, postdata2) => {
@@ -334,7 +335,7 @@ module.exports.getCardbodyProductInfo1 = (picUrl, imageContents) => {
 //body 商品情報1 画像URL
 module.exports.getCardPicURL = (picUrl) => {
   if(picUrl == "" || picUrl === undefined || picUrl === null){
-    picUrl = "https://drive.google.com/uc?id=1YyBSNal0e0abFwnXaLScToXoJHZeLwks" //No image
+    picUrl = "https://xxx" //No image
   } 
   return picUrl
 }

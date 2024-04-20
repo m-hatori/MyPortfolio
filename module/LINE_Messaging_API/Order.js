@@ -106,7 +106,7 @@ module.exports.chechkTextDeliveryday = (deliveryday) => {
   }
 }
 
-//発注情報 書き込み
+//●発注情報 書き込み
 module.exports.setOrderInfo = async (event, messagesArray, user, orderArrays, plSheets) => {  
   await user.httpsRequest.replyMessageByAxios(event, messagesArray)
 

@@ -77,7 +77,7 @@ const checkSameProductsInCart = (i, user, postBackData) => {
 }
 
 //再伺いメッセージ取得
-//TODO: 納品日がテキストのとき 追加発注ボタンを表示しない。どう仕分けるか。
+//TODO: 納品日がテキストのとき 追加発注ボタンを表示しないようにする。
 const getReOrderTextMessage = (cartInfoArray_doubleOrder, cartInfoArray_doubleCart) => {
   let textMessage = ""
 
